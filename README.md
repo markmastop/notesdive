@@ -142,6 +142,14 @@ NotesDive stores persistent data in `data/`:
 - Export documents as PDF where applicable
 - Stream sync progress to the UI via SSE
 
+### Upstream References
+
+The current reMarkable integration is based on a mix of upstream concepts and project-specific implementation:
+
+- `ddvk/rmapi` informed the auth, registration, token, and document listing approach
+- `rmscene` is used for `.rm` scene parsing and text extraction
+- the cache layer, preview generation, markdown export, and vault sync flow are implemented in this repository
+
 ### Ollama
 
 - Save integration settings
