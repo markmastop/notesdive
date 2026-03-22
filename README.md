@@ -18,6 +18,7 @@ The current UI already supports:
 - syncing reMarkable documents into the vault as markdown or PDF
 - previewing reMarkable content
 - local note creation
+- central todo aggregation
 - basic workspace overview and recent activity
 - Ollama chat and document handoff
 - Scriberr transcription listing
@@ -29,6 +30,10 @@ The current UI already supports:
 - Runtime: Docker / Docker Compose
 - Storage: markdown files, frontmatter, local JSON, SQLite caches
 - Realtime UI updates: Server-Sent Events for reMarkable sync status
+
+## Documentation
+
+Detailed website-ready project documentation is available in [`documentation/index.md`](documentation/index.md).
 
 ## Project Layout
 
@@ -60,7 +65,6 @@ The current UI already supports:
 │   ├── integrations/
 │   │   ├── remarkable/
 │   │   └── vault/
-│   ├── samples/
 │   └── vault/
 ├── docker-compose.yaml
 ├── docker-compose.dev.yaml
@@ -78,6 +82,7 @@ The backend owns all stateful operations:
 - vault note loading and writing
 - vault index creation in SQLite
 - reMarkable registration, caching, preview generation, and vault sync
+- read-only CalDAV task exposure from the todo cache
 - Ollama settings, model listing, chat history, and streaming responses
 - Scriberr settings and transcription listing
 
@@ -107,18 +112,17 @@ The frontend talks to the backend over HTTP and uses SSE for live reMarkable syn
 
 NotesDive stores persistent data in `data/`:
 
-- `data/vault/`: markdown notes and synced reMarkable exports
+- `data/vault/`: the full vault, including markdown notes and synced reMarkable exports
 - `data/attachments/`: attachment storage
 - `data/integrations/remarkable/`: reMarkable auth, cache, sync state, preview cache
 - `data/integrations/vault/`: vault SQLite index
-- `data/samples/notes.json`: fallback sample source if the vault has no notes
 
 ### reMarkable Sync Flow
 
 1. Pair the app with reMarkable using a one-time code from `https://my.remarkable.com/device/remarkable`
 2. The backend caches document metadata in SQLite
 3. The UI browses cached documents and previews them
-4. A sync exports reMarkable content into `data/vault/remarkable/`
+4. A sync exports reMarkable content directly into `data/vault/`
 5. The frontend receives live sync progress over SSE from `/api/remarkable/sync-events`
 
 ## Current Capabilities
@@ -178,6 +182,13 @@ Main endpoints currently exposed by the backend:
 - `GET /api/vault/info`
 - `POST /api/vault/reindex`
 
+### CalDAV
+
+- `/.well-known/caldav`
+- `${APP_CALDAV_BASE_PATH}/`
+- `${APP_CALDAV_BASE_PATH}/calendars/tasks/`
+- `${APP_CALDAV_BASE_PATH}/calendars/tasks/{todo_id}.ics`
+
 ### Integration Settings
 
 - `GET /api/integrations/settings`
@@ -217,8 +228,10 @@ General variables used in local or deployed environments:
 ### Compose / Frontend
 
 - `BACKEND_PORT`
+- `PUBLIC_BACKEND_PORT`
 - `FRONTEND_PORT`
 - `VITE_API_BASE_URL`
+- `VITE_CALDAV_BASE_URL`
 - `VITE_APP_BUILD_REF`
 - `VITE_APP_BUILD_TIME`
 
@@ -227,8 +240,8 @@ General variables used in local or deployed environments:
 - `APP_BUILD_REF`
 - `APP_BUILD_TIME`
 - `APP_CORS_ORIGINS`
+- `APP_CORS_ORIGIN_REGEX`
 - `APP_DATA_ROOT`
-- `APP_NOTES_SEED_FILE`
 - `APP_VAULT_ROOT`
 - `APP_ATTACHMENTS_ROOT`
 - `APP_VAULT_INTEGRATION_ROOT`
@@ -236,6 +249,13 @@ General variables used in local or deployed environments:
 - `APP_SCRIBERR_INTEGRATION_ROOT`
 - `APP_REMARKABLE_INTEGRATION_ROOT`
 - `APP_REMARKABLE_SETUP_URL`
+- `APP_CALDAV_ENABLED`
+- `APP_CALDAV_BASE_PATH`
+- `APP_CALDAV_USERNAME`
+- `APP_CALDAV_PASSWORD`
+- `APP_CALDAV_READ_ONLY`
+- `APP_CALDAV_REQUIRE_AUTH`
+- `APP_PUBLIC_CALDAV_REQUIRE_AUTH`
 - `APP_REMARKABLE_AUTH_ROOT`
 - `APP_REMARKABLE_DOC_ROOT`
 - `APP_REMARKABLE_SYNC_ROOT`
@@ -294,9 +314,9 @@ cd backend
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-APP_CORS_ORIGINS='["http://localhost:5173"]' \
+APP_CORS_ORIGINS='[]' \
+APP_CORS_ORIGIN_REGEX='.*' \
 APP_DATA_ROOT=../data \
-APP_NOTES_SEED_FILE=../data/samples/notes.json \
 APP_VAULT_ROOT=../data/vault \
 APP_ATTACHMENTS_ROOT=../data/attachments \
 uvicorn app.main:app --app-dir . --reload --reload-dir app --host 0.0.0.0 --port 3010
@@ -366,6 +386,7 @@ At minimum, set:
 
 ```env
 APP_CORS_ORIGINS=["https://notes.example.com"]
+APP_CORS_ORIGIN_REGEX=
 VITE_API_BASE_URL=https://api.example.com
 APP_BUILD_REF=<git-sha-or-tag>
 APP_BUILD_TIME=<build-timestamp>
@@ -373,24 +394,26 @@ VITE_APP_BUILD_REF=<git-sha-or-tag>
 VITE_APP_BUILD_TIME=<build-timestamp>
 ```
 
-If frontend and backend are served behind the same public Coolify domain pattern, use the actual backend URL in `VITE_API_BASE_URL`.
+If `VITE_API_BASE_URL` is left empty, the frontend falls back to the current browser hostname on port `3010`. If frontend and backend are served behind the same public Coolify domain pattern, use the actual backend URL in `VITE_API_BASE_URL`.
 
 ### Coolify Deployment Steps
 
 1. Create a new Compose-based app in Coolify.
 2. Point it to this repository.
 3. Select [docker-compose.yaml](docker-compose.yaml).
-4. Configure persistent storage for the backend service so `/data` survives redeploys.
-5. Set `APP_CORS_ORIGINS` to the public frontend domain.
-6. Set `VITE_API_BASE_URL` to the public backend URL.
-7. Optionally set build metadata variables so the UI and API show the deployed ref.
-8. Deploy.
+4. Under `Advanced`, enable `Connect To Predefined Network`.
+5. Configure persistent storage for the backend service so `/data` survives redeploys.
+6. Set `APP_CORS_ORIGINS` to the public frontend domain and clear or narrow `APP_CORS_ORIGIN_REGEX`.
+7. Set `VITE_API_BASE_URL` to the public backend URL.
+8. Optionally set build metadata variables so the UI and API show the deployed ref.
+9. Deploy.
 
 ### Coolify Notes
 
 - SSE is used for reMarkable sync progress. The backend already returns `X-Accel-Buffering: no` on the sync event stream, which helps with reverse proxy buffering.
 - If you put another proxy in front of Coolify, make sure it does not aggressively buffer `text/event-stream`.
 - The frontend is a built Vite app, not the Vite dev server, when deployed through [frontend/Dockerfile](frontend/Dockerfile).
+- In Coolify, `Advanced -> Connect To Predefined Network` should be enabled for this Compose-based setup.
 
 ## Operational Notes
 
@@ -398,7 +421,7 @@ If frontend and backend are served behind the same public Coolify domain pattern
 
 - Pairing requires a one-time code from `https://my.remarkable.com/device/remarkable`
 - Cached metadata is stored in SQLite under `data/integrations/remarkable`
-- Sync exports are written under `data/vault/remarkable/`
+- Sync exports are written directly into `data/vault/`
 - Sync progress is pushed to the frontend via SSE
 
 ### Vault Index
