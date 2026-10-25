@@ -1,0 +1,33 @@
+NotesDive desktop binary includes PDF.js (pdfjs-dist 6.3.289),
+Copyright Mozilla Foundation and contributors.
+
+PDF.js is licensed under the Apache License, Version 2.0.
+See the bundled pdfjs-dist-LICENSE.txt for its complete license terms.
+
+The Office viewers include Mammoth (BSD 2-Clause), JSZip (MIT option),
+@office-kit/pptx and @office-kit/pptx-preview (MIT), and Mammoth's
+dingbat-to-unicode and lop helpers (BSD 2-Clause). Their complete license
+texts are bundled in the matching *-LICENSE.txt files.
+
+The NotesDive binary license is in LICENSE.txt. Third-party components retain
+their own licenses.
+
+Direct PDF generation includes pdfmake 0.3.11, html-to-pdfmake 2.5.34,
+PDFKit, html2canvas 1.4.1 and their supporting libraries. License terms and component
+attributions are in pdf-export-LICENSE.txt. The embedded Roboto font is
+Copyright 2011 The Roboto Project Authors and licensed under the SIL Open
+Font License 1.1; see Roboto-LICENSE.txt.
+
+The reMarkable cloud browser uses reqwest (MIT or Apache-2.0), keyring
+(MIT or Apache-2.0), and supporting Rust TLS and platform libraries.
+Additional dependency license texts and attributions for the macOS Apple
+Silicon build are bundled in remarkable-LICENSE.txt.
+
+Notebook previews use remarkable-rm 1.1.0 (MIT), Copyright 2026 Stewart
+McSporran (Scratchydisk), with format/rendering work derived from rmscene
+(MIT), Copyright 2023 Rick Lupton. See remarkable-rm-LICENSE.txt.
+
+Marp presentations use @marp-team/marp-core 5.0.2 and Marpit (MIT),
+Copyright Marp team, with PostCSS, its parsing helpers and supporting
+Markdown libraries. Their license texts and attributions are bundled
+in marp-LICENSE.txt.

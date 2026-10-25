@@ -1,0 +1,31 @@
+[package]
+name = "notesdive"
+version = "0.18.9"
+description = "A quiet home for your Markdown notes"
+license = "MIT"
+authors = ["NotesDive"]
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "notesdive_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "8"
+walkdir = "2"
+sha2 = "0.10"
+tempfile = "3"
+base64 = "0.22"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }

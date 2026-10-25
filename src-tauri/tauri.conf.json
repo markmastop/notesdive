@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "NotesDive",
+  "version": "0.18.9",
+  "identifier": "app.notesdive.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "NotesDive",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 520,
+        "backgroundColor": "#fafaf7"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost https://api.github.com; font-src 'self'; object-src 'none'; frame-src 'self'; base-uri 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "role": "Editor",
+        "rank": "Alternate"
+      }
+    ],
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "shortDescription": "Your notes. Your files. Your space.",
+    "category": "Productivity",
+    "resources": {
+      "../LICENSE": "LICENSE.txt",
+      "../THIRD-PARTY-NOTICES.txt": "THIRD-PARTY-NOTICES.txt",
+      "../licenses/marp-LICENSE.txt": "marp-LICENSE.txt",
+      "../licenses/pdf-export-LICENSE.txt": "pdf-export-LICENSE.txt",
+      "../licenses/Roboto-LICENSE.txt": "Roboto-LICENSE.txt",
+      "../licenses/pdfjs-dist-LICENSE.txt": "pdfjs-dist-LICENSE.txt",
+      "../licenses/mammoth-LICENSE.txt": "mammoth-LICENSE.txt",
+      "../licenses/lop-LICENSE.txt": "lop-LICENSE.txt",
+      "../licenses/dingbat-to-unicode-LICENSE.txt": "dingbat-to-unicode-LICENSE.txt",
+      "../licenses/jszip-LICENSE.txt": "jszip-LICENSE.txt",
+      "../licenses/office-kit-pptx-LICENSE.txt": "office-kit-pptx-LICENSE.txt",
+      "../licenses/office-kit-pptx-preview-LICENSE.txt": "office-kit-pptx-preview-LICENSE.txt",
+      "../licenses/remarkable-LICENSE.txt": "remarkable-LICENSE.txt",
+      "../licenses/remarkable-rm-LICENSE.txt": "remarkable-rm-LICENSE.txt"
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}

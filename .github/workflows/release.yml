@@ -1,0 +1,67 @@
+name: Release macOS app
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish macOS Apple Silicon
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Validate tag, versions and release notes
+        run: node scripts/validate-release.mjs "$RELEASE_TAG"
+      - name: Set up stable Rust
+        run: rustup update stable --no-self-update && rustup default stable
+      - name: Install dependencies
+        run: npm ci
+      - name: Test and build frontend
+        run: npm run check && npm run test:release
+      - name: Test native app
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Install test browsers
+        run: npx playwright install chromium webkit
+      - name: Test app in browsers
+        run: npm run test:e2e
+      - name: Build and verify installer
+        run: npm run release:mac
+      - name: Create complete release and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="docs/releases/$RELEASE_TAG.md"
+          output="release/$RELEASE_TAG"
+          if gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft > "$RUNNER_TEMP/release-is-draft"; then
+            if [[ "$(cat "$RUNNER_TEMP/release-is-draft")" != "true" ]]; then
+              echo "Release already published; refusing to replace its assets."
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --title "NotesDive $RELEASE_TAG" --notes-file "$notes"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "NotesDive $RELEASE_TAG" --notes-file "$notes"
+          fi
+          gh release upload "$RELEASE_TAG" "$output/"*.dmg "$output/"*.txt "$output/RELEASE_NOTES.md" --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease=false
