@@ -3120,22 +3120,54 @@ test("clipboard screenshots paste into both editors as local Markdown images", a
 });
 
 
-test("project widget buttons create tasks and links in the selected folder", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("test-projects", JSON.stringify({ active: "quick", library: null, revision: "legacy", projects: [{ id: "quick", name: "Quick project", description: "", color: "sage", pinned: false, archived: false, folders: ["/test/Fieldnotes"], defaultFolder: "/test/Fieldnotes" }] })));
+test("project toolbar creates todos and links in project index files and notes in the selected subfolder", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("test-projects", JSON.stringify({ active: "quick", library: null, revision: "legacy", projects: [{ id: "quick", name: "Quick project", description: "", color: "sage", pinned: false, archived: false, folders: ["/test/Fieldnotes", "/test/Projects"], defaultFolder: "/test/Fieldnotes" }] })));
   await page.goto("/"); await page.reload();
   await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Projects", exact: true }).click();
   await page.locator(".project-select").filter({ hasText: /^Quick project/ }).click();
-  await page.getByRole("button", { name: "New task", exact: true }).click();
+  await page.getByRole("button", { name: "New todo", exact: true }).click();
   await page.getByRole("textbox", { name: "Task", exact: true }).fill("Call the supplier");
   await page.getByRole("button", { name: "Add task", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Complete Call the supplier in Fieldnotes" })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__test.files["TODO.md"])).toContain("- [ ] Call the supplier");
+  await page.getByRole("button", { name: "New todo", exact: true }).click();
+  await page.getByRole("textbox", { name: "Task", exact: true }).fill("Review the quote");
+  await page.getByRole("button", { name: "Add task", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Task", exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__test.files["TODO.md"])).toBe("# Todo\n\n- [ ] Call the supplier\n- [ ] Review the quote\n");
   await page.getByRole("button", { name: "New link", exact: true }).click();
   await page.getByRole("textbox", { name: "Link title", exact: true }).fill("Supplier [catalog]");
   await page.getByRole("textbox", { name: "Link URL", exact: true }).fill("https://example.com/catalog");
   await page.getByRole("button", { name: "Add link", exact: true }).click();
   await expect(page.getByRole("link", { name: /Supplier \[catalog\]/ })).toHaveAttribute("href", "https://example.com/catalog");
-  await page.locator(".project-files-panel").getByRole("button", { name: "New note", exact: true }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__test.files["LINKS.md"])).toContain("https://example.com/catalog");
+  await page.getByRole("button", { name: "New link", exact: true }).click();
+  await page.getByRole("textbox", { name: "Link title", exact: true }).fill("Contact");
+  await page.getByRole("textbox", { name: "Link URL", exact: true }).fill("https://example.com/contact");
+  await page.getByRole("button", { name: "Add link", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Link title", exact: true })).toHaveCount(0);
+  const links = await page.evaluate(() => (window as any).__test.files["LINKS.md"]);
+  expect(links).toContain("https://example.com/catalog");
+  expect(links).toContain("https://example.com/contact");
+  await page.getByRole("tab", { name: /^Files/ }).click();
+  const browser = page.locator(".project-file-browser");
+  await browser.getByRole("button", { name: "Toggle folder Fieldnotes", exact: true }).click();
+  await browser.getByRole("button", { name: "Folder Fieldnotes/Ideas", exact: true }).click();
+  await page.getByRole("button", { name: "New project note", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Note name", exact: true })).toHaveValue("Ideas/");
+  await page.getByRole("textbox", { name: "Note name", exact: true }).fill("Ideas/Supplier meeting");
+  await page.getByRole("button", { name: "Create note", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__test.files["Ideas/Supplier meeting.md"])).toContain("Supplier meeting");
+  expect(await page.evaluate(() => (window as any).__test.files["Supplier meeting.md"])).toBeUndefined();
+  await browser.getByRole("button", { name: "Folder Projects", exact: true }).click();
+  await page.getByRole("button", { name: "New project note", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Note name", exact: true })).toHaveValue("");
+  await page.getByRole("textbox", { name: "Note name", exact: true }).fill("Other root");
+  await page.getByRole("button", { name: "Create note", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__test.secondFiles["Other root.md"])).toContain("Other root");
+  expect(await page.evaluate(() => (window as any).__test.files["Other root.md"])).toBeUndefined();
 });
 
 test("Marp renders themes, directives, speaker notes and local backgrounds without fetching note resources", async ({ page }, testInfo) => {

@@ -21,6 +21,8 @@ import {
   Link2,
   Copy,
   PencilLine,
+  FilePlus2,
+  ListTodo,
   ArrowUpRight,
 } from "lucide-react";
 import { RemarkableFolderPicker } from "./RemarkableFolderPicker";
@@ -69,7 +71,7 @@ export function ProjectsView({
   save: (next: Projects, activate?: boolean) => Promise<boolean>;
   choose: () => Promise<Folder | null>;
   open: (folder: string, path: string, page?: number) => void;
-  create: (folder: string) => void;
+  create: (folder: string, prefix?: string) => void;
   addItem: (folder: string, kind: "task" | "link", text: string, url: string) => Promise<boolean>;
   toggle: (task: ProjectTodo) => Promise<boolean>;
 }) {
@@ -203,6 +205,14 @@ export function ProjectsView({
       .includes(query.toLowerCase().trim()),
   );
   const fileScope = project ? scopeResources(project, localData.inventory, [], [], new Map(project.folders.map((folder) => [folder, folderLabel(folder)])), localData.directories) : null;
+  const noteRoot = fileFolder ? fileScope?.rootFolders.get(fileFolder.split("/")[0]) : undefined;
+  const noteFolder = noteRoot ?? newFolder;
+  const notePrefix = noteRoot ? fileFolder!.split("/").slice(1).join("/") : "";
+  const canCreateNote = !!project?.folders.includes(noteFolder);
+  const createNote = () => create(noteFolder, notePrefix ? `${notePrefix}/` : "");
+  const startAdding = (kind: "task" | "link") => {
+    setAdding(kind); setItemText(""); setItemUrl("");
+  };
   const rmScope = project ? scopeResources({ ...project, folders: [] }, cloud.entries, [], cloud.folders) : null;
   const openInDocumentTab = (folder: string, path: string, page?: number) => {
     const remarkable = folder.startsWith("remarkable:");
@@ -562,6 +572,11 @@ export function ProjectsView({
                     onChange={(e) => setQuery(e.target.value)}
                   />
                 </label>
+                <div className="project-quick-actions" role="group" aria-label="Create project items">
+                  <button className="icon-button" title="New note in selected folder" aria-label="New project note" disabled={locked || !canCreateNote} onClick={createNote}><FilePlus2 size={17} /></button>
+                  <button className="icon-button" title="New todo in TODO.md" aria-label="New todo" disabled={locked || !project.folders.includes(newFolder)} onClick={() => startAdding("task")}><ListTodo size={17} /></button>
+                  <button className="icon-button" title="New link in LINKS.md" aria-label="New link" disabled={locked || !project.folders.includes(newFolder)} onClick={() => startAdding("link")}><Link2 size={17} /></button>
+                </div>
                 {!project.defaultFolder && (
                   <select
                     aria-label="New note destination"
@@ -576,12 +591,6 @@ export function ProjectsView({
                     ))}
                   </select>
                 )}
-                <button
-                  disabled={locked || !project.folders.includes(newFolder)}
-                  onClick={() => create(newFolder)}
-                >
-                  <Plus size={15} /> New project note
-                </button>
                 <button
                   disabled={locked || loading || cloud.loading}
                   onClick={() => { cloud.refresh(); refreshLocal(); }}
@@ -646,7 +655,7 @@ export function ProjectsView({
                   }
                 });
               }}>
-                <strong>{adding === "task" ? "New task" : "New link"}</strong>
+                <strong>{adding === "task" ? "New todo · TODO.md" : "New link · LINKS.md"}</strong>
                 <input autoFocus required aria-label={adding === "task" ? "Task" : "Link title"} placeholder={adding === "task" ? "What needs to be done?" : "Link title"} value={itemText} onChange={(event) => setItemText(event.target.value)} disabled={locked} />
                 {adding === "link" && <input required type="url" pattern="https?://.*" aria-label="Link URL" placeholder="https://…" value={itemUrl} onChange={(event) => setItemUrl(event.target.value)} disabled={locked} />}
                 <select aria-label="Destination folder" value={newFolder} onChange={(event) => setNewFolder(event.target.value)} disabled={locked}>
@@ -661,7 +670,7 @@ export function ProjectsView({
                 className={`project-cockpit ${filter === "all" ? "overview" : ""}`}
               >
                 {filter === "all" && <section className="project-panel project-stream project-files-panel" aria-label="Project files">
-                  <div className="project-panel-heading"><h3>Project stream</h3><span className="project-scope">Sorted by source changes</span><button className="icon-button" title="New note" aria-label="New note" disabled={locked || !project.folders.includes(newFolder)} onClick={() => create(newFolder)}><Plus size={17} /></button></div>
+                  <div className="project-panel-heading"><h3>Project stream</h3><span className="project-scope">Sorted by source changes</span><button className="icon-button" title="New note" aria-label="New note" disabled={locked || !canCreateNote} onClick={createNote}><Plus size={17} /></button></div>
                   <div className="task-filters stream-filters" aria-label="Stream filter">{(["all", "files", "remarkable", "tasks", "links"] as const).map((value) => <button key={value} aria-pressed={streamFilter === value} onClick={() => setStreamFilter(value)}>{value === "all" ? "All activity" : value === "files" ? "Documents" : value === "remarkable" ? "reMarkable" : value === "tasks" ? "Tasks" : "Links"}</button>)}</div>
                   <div className="recent-notes project-stream-list">{streamEntries.slice(0, limit).map((entry) => <button key={entry.key} disabled={locked} onClick={() => { if (entry.kind === "links") { setFilter("links"); } else openInDocumentTab(entry.folder, entry.path, entry.page); }}>{entry.kind === "links" ? <Link2 size={20} /> : <DocumentIcon path={entry.path} remarkable={!!entry.remarkableId} />}<span><small className="stream-date">{dateLabel(entry.modified)}</small><strong>{entry.title}</strong><small>{entry.detail} · {folderLabel(entry.folder)} · {entry.path}</small></span><ArrowUpRight size={14} /></button>)}</div>
                   {!streamEntries.length && !loading && <p className="home-empty">No project activity to show yet.</p>}
@@ -683,7 +692,7 @@ export function ProjectsView({
                           {displayedEntries.length}
                         </span>
                       </h3>
-                      {filter !== "remarkable" && <button className="icon-button" title="New note" aria-label="New note" disabled={locked || !project.folders.includes(newFolder)} onClick={() => create(newFolder)}><Plus size={17} /></button>}
+                      {filter !== "remarkable" && <button className="icon-button" title="New note" aria-label="New note" disabled={locked || !canCreateNote} onClick={createNote}><Plus size={17} /></button>}
                     </div>
                     <p className="project-panel-hint">
                       {filter === "remarkable" ? "Read-only documents from this project’s linked reMarkable folders and their subfolders." : "Open a document to read or edit it."}
@@ -743,7 +752,6 @@ export function ProjectsView({
                           {visibleTasks.length}
                         </span>
                       </h3>
-                      <button className="icon-button" title="New task" aria-label="New task" disabled={locked || !project.folders.includes(newFolder)} onClick={() => { setAdding("task"); setItemText(""); setItemUrl(""); }}><Plus size={17} /></button>
                     </div>
                     <p className="project-panel-hint">
                       Your next steps, collected from every linked folder.
@@ -817,7 +825,6 @@ export function ProjectsView({
                         </span>
                       </h3>
                       <div className="project-link-sources">
-                        <button className="icon-button" title="New link" aria-label="New link" disabled={locked || !project.folders.includes(newFolder)} onClick={() => { setAdding("link"); setItemText(""); setItemUrl(""); }}><Plus size={17} /></button>
                         {data.linkFiles.map((file) => (
                           <button
                             disabled={locked}

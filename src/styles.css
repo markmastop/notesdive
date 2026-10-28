@@ -2859,3 +2859,6 @@ button svg {
 .marp-slide-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid #e6dbcf; border-radius: 5px; font-size: 11px; color: #6f5943; }
 .marp-slide-actions button:not(:disabled):hover { background: #f4ece4; }
 .marp-slide-actions button:disabled { opacity: .4; }
+
+.project-quick-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.project-toolbar .project-quick-actions button { width: 34px; height: 34px; padding: 7px; justify-content: center; }

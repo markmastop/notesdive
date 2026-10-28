@@ -194,16 +194,17 @@ export default function App() {
     const ok = await session.close(async () => {
       try {
         const label = text.replace(/[\r\n]+/g, " ").replace(/([\\\[\]])/g, "\\$1");
-        if (kind === "task") {
-          await api.create(folder, `Task-${crypto.randomUUID()}.md`, `- [ ] ${text.replace(/[\r\n]+/g, " ")}\n`);
+        const line = kind === "task"
+          ? `- [ ] ${text.replace(/[\r\n]+/g, " ")}\n`
+          : `- [${label}](<${new URL(url).href.replace(/>/g, "%3E")}>)\n`;
+        const listing = await api.list(folder, "");
+        const pattern = kind === "task" ? /^todo\.(md|markdown)$/i : /^links\.(md|markdown)$/i;
+        const existing = listing.entries.find((entry) => pattern.test(entry.path));
+        if (existing) {
+          const note = await api.read(folder, existing.path);
+          await api.save(folder, { ...note, content: note.content + (note.content.endsWith("\n") ? "" : "\n") + line });
         } else {
-          const line = `- [${label}](<${new URL(url).href.replace(/>/g, "%3E")}>)\n`;
-          const listing = await api.list(folder, "");
-          const existing = listing.entries.find((entry) => /^links\.(md|markdown)$/i.test(entry.path));
-          if (existing) {
-            const note = await api.read(folder, existing.path);
-            await api.save(folder, { ...note, content: note.content + (note.content.endsWith("\n") ? "" : "\n") + line });
-          } else await api.create(folder, "links.md", `# Links\n\n${line}`);
+          await api.create(folder, kind === "task" ? "TODO.md" : "LINKS.md", `# ${kind === "task" ? "Todo" : "Links"}\n\n${line}`);
         }
       } catch (error) { failure = error; }
     });
@@ -1119,7 +1120,7 @@ export default function App() {
             selectedResource={viewDocument ? remarkableSelection ? JSON.stringify([remarkableSelection.folder, remarkableSelection.path]) : assetSelection ? JSON.stringify([assetSelection.folder, assetSelection.path]) : state.note ? JSON.stringify([state.folder?.path, state.note.path]) : undefined : undefined}
             reader={viewDocument ? documentReader : undefined}
             open={(folder, path, page) => void openProjectFile(folder, path, page, true).catch((error) => session.report(error))}
-            create={(folder) => void createProjectNote(folder).catch((error) => session.report(error))}
+            create={(folder, prefix) => void createProjectNote(folder, prefix).catch((error) => session.report(error))}
             addItem={addProjectItem}
             toggle={toggleProjectTask} />
         ) : tab === "home" ? (
