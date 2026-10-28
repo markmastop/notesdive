@@ -64,6 +64,7 @@ import { projectApi, type Projects, type ProjectTodo, type ProjectEntry } from "
 import { allFolders, allWorkProject, contextFor, pageTitle, type Page, type ViewContext } from "./navigation";
 import { scopeResources, selectedProject } from "./projectScope";
 import { useProjectScope } from "./useProjectScope";
+import { remarkableRoot } from "./remarkableScope";
 import { useRemarkableScope } from "./useRemarkableScope";
 import { RemarkableDocument } from "./RemarkableDocument";
 import { syncFolder as runFolderSync } from "./remarkableFolderSync";
@@ -83,6 +84,24 @@ const basename = (path: string) =>
     .split("/")
     .pop()!
     .replace(/\.(md|markdown)$/i, "");
+
+type ProjectLocation = {
+  tab: "projects" | "notes" | "todos";
+  folder: string | null;
+  recent: boolean;
+  query: string;
+  focus: boolean;
+  document: { folder: string; path: string; fragment?: string } | null;
+  remarkable: (ProjectEntry & { page?: number }) | null;
+};
+const locationKey = (library: string | null | undefined, id: string) =>
+  `notesdive:project-location:${JSON.stringify([library ?? null, id])}:workspace`;
+const readLocation = (library: string | null | undefined, id: string): ProjectLocation | null => {
+  try {
+    const value = JSON.parse(localStorage.getItem(locationKey(library, id)) ?? "null");
+    return value && ["projects", "notes", "todos"].includes(value.tab) ? value : null;
+  } catch { return null; }
+};
 
 export default function App() {
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
@@ -149,12 +168,23 @@ export default function App() {
     return ok && changed;
   };
   const [pendingProjectFile, setPendingProjectFile] = useState<{ folder: string; path: string; inline?: boolean } | null>(null);
+  const [locationRequest, setLocationRequest] = useState<{ id: string; location: ProjectLocation | null } | null>(null);
+  const resumeProject = (id: string) => {
+    const location = readLocation(projects.library, id);
+    setLocationRequest({ id, location });
+    setContext("project");
+    setTab(location?.tab ?? "projects");
+  };
+  const selectProject = async (id: string) => {
+    if (projects.active !== id) return saveProjects({ ...projects, active: id }, true);
+    return session.close(async () => { rememberProject(id); resumeProject(id); });
+  };
   const saveProjects = async (next: Projects, activate = false) => {
     const ok = await session.close(async () => {
       const saved = await projectApi.save({ ...next, library: projects.library ?? null, revision: projects.revision ?? "" });
       setProjects(saved);
       if (!selectedProject(saved)) setContext("all");
-      else if (activate) setContext("project");
+      else if (activate) resumeProject(saved.active!);
       session.clearError();
     });
     if (ok && next.active !== projects.active && next.active) rememberProject(next.active);
@@ -444,6 +474,62 @@ export default function App() {
     setAsset(null);
     setFocusDocument(false);
   }, [scopeKey]);
+  // Project activation holds the document session lock. Start restoration once
+  // it is released, and do not restart when restoration acquires that lock.
+  const restoringLocation = useRef<typeof locationRequest>(null);
+  const currentLocation = useRef({ request: locationRequest, scopeKey });
+  currentLocation.current = { request: locationRequest, scopeKey };
+  useEffect(() => {
+    if (!locationRequest || activeProject?.id !== locationRequest.id || state.busy || restoringLocation.current === locationRequest) return;
+    restoringLocation.current = locationRequest;
+    const { location } = locationRequest;
+    const alive = () => currentLocation.current.request === locationRequest && currentLocation.current.scopeKey === scopeKey;
+    const restoreLocation = async () => {
+      setViewDocument(false);
+      setRemarkableSelection(null);
+      setAssetSelection(null);
+      setAsset(null);
+      if (location) {
+        setSelectedFolder(location.folder ?? null);
+        setRecentNotes(!!location.recent);
+        setQuery(location.query ?? "");
+        setFocusDocument(!!location.focus);
+        const remote = location.remarkable;
+        const document = location.document;
+        if (remote && activeProject.remarkableFolders?.some((folder) => remarkableRoot(folder) === remote.folder)) {
+          setRemarkableSelection(remote);
+          setViewDocument(true);
+        } else if (document && activeProject.folders.includes(document.folder)) {
+          if (session.getSnapshot().folder?.path !== document.folder && !await session.switchWorkspace(document.folder)) return;
+          if (!alive()) return;
+          if (fileKind(document.path) === "markdown") {
+            if (!await session.open(document.path) || !alive()) return;
+          } else {
+            if (!await session.closeDocument() || !alive()) return;
+            setAssetSelection(document);
+          }
+          setViewDocument(true);
+        }
+      }
+    };
+    void restoreLocation().catch((error) => session.report(error)).finally(() => {
+      if (alive()) setLocationRequest(null);
+    });
+  }, [locationRequest, scopeKey, state.busy]);
+  const locationScope = useRef(scopeKey);
+  useEffect(() => {
+    const sameScope = locationScope.current === scopeKey;
+    locationScope.current = scopeKey;
+    if (!sameScope || !activeProject || locationRequest || state.busy || !["projects", "notes", "todos"].includes(tab)) return;
+    const location: ProjectLocation = {
+      tab: tab as ProjectLocation["tab"], folder: selectedFolder, recent: recentNotes, query, focus: focusDocument,
+      document: viewDocument && !remarkableSelection
+        ? assetSelection ?? (state.note && state.folder ? { folder: state.folder.path, path: state.note.path } : null) : null,
+      remarkable: viewDocument ? remarkableSelection : null,
+    };
+    try { localStorage.setItem(locationKey(projects.library, activeProject.id), JSON.stringify(location)); }
+    catch { /* A storage failure must not prevent switching projects. */ }
+  }, [scopeKey, tab, selectedFolder, recentNotes, query, focusDocument, viewDocument, assetSelection, remarkableSelection, state.note, state.busy, locationRequest]);
   // A Finder open can change the active folder and project context. Reveal it
   // after the scope reset above, rather than letting that reset hide the note.
   useEffect(() => {
@@ -942,10 +1028,7 @@ export default function App() {
             })()}><X size={13} /></button>
           <button className="project-bookmark-name" aria-label={`Open project ${project.name}`} aria-pressed={activeProject?.id === project.id}
             disabled={state.busy || taskBusy || libraryEditing} onClick={() => {
-              if (selected?.id === project.id) navigate(["notes", "todos"].includes(tab) ? tab : "projects", "project");
-              else void saveProjects({ ...projects, active: project.id }, true).then((ok) => {
-                if (ok && !["notes", "todos"].includes(tab)) setTab("projects");
-              });
+              void selectProject(project.id);
             }}>{project.name}</button>
         </aside>)}
       </div>}
@@ -1135,12 +1218,7 @@ export default function App() {
             search={searchHome}
             showTasks={() => navigate("todos")}
             busy={state.busy || taskBusy || !desktop}
-            selectProject={(id) => {
-              if (projects.active === id) { rememberProject(id); navigate("projects", "project"); return; }
-              void saveProjects({ ...projects, active: id }, true).then((ok) => {
-                if (ok) { rememberProject(id); setTab("projects"); }
-              });
-            }}
+            selectProject={(id) => { void selectProject(id); }}
             showProjects={() => navigate("projects")}
             showSettings={() => navigate("settings")}
             chooseFolder={() => void chooseWorkspace(true)}

@@ -2919,7 +2919,7 @@ test("project bookmarks keep multiple projects open, switch scope, persist and c
   await nav.getByRole("button", { name: "Project files", exact: true }).click();
   await expect(nav.getByRole("button", { name: "Project files", exact: true }).locator(".rail-badge")).toHaveText("4");
   await tabs.getByRole("button", { name: "Open project Field work", exact: true }).click();
-  await expect(nav.getByRole("button", { name: "Project files", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "Project overview", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("button", { name: "Project files", exact: true }).locator(".rail-badge")).toHaveText("3");
   await expect(nav.getByRole("button", { name: "All files", exact: true }).locator(".rail-badge")).toHaveText("7");
   await expect(tabs.getByRole("button", { name: "Open project Field work", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -3972,4 +3972,47 @@ test("Marp reorders slides with notes and keeps the moved slide selected", async
   await expect(earlier).toBeDisabled();
   await page.screenshot({ path: testInfo.outputPath("slide-reorder.png") });
   await expect.poll(() => page.evaluate(() => (window as any).__test.files["Reorder.md"])).toBe("---\nmarp: true\ntheme: uncover\n---\n# Second slide\n<!-- Second note -->\n\n\n---\n# Third slide\n\n---\n# First slide\n<!-- First note -->\n");
+});
+
+
+test("each project resumes its own view, folder and document across switches and reloads", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem("test-projects")) return;
+    const base = { description: "", pinned: false, archived: false };
+    localStorage.setItem("test-projects", JSON.stringify({ library: null, revision: "legacy", active: "field", projects: [
+      { ...base, id: "field", name: "Field work", color: "rose", folders: ["/test/Fieldnotes"], defaultFolder: "/test/Fieldnotes" },
+      { ...base, id: "research", name: "Research", color: "blue", folders: ["/test/Projects"], defaultFolder: "/test/Projects" },
+    ] }));
+  });
+  await page.goto("/"); await page.reload();
+  const nav = page.getByRole("navigation", { name: "Main navigation" });
+  const tabs = page.getByRole("group", { name: "Open projects", exact: true });
+  await tabs.getByRole("button", { name: "Open project Field work", exact: true }).click();
+  const workspace = page.getByRole("region", { name: "Projects workspace" });
+  await workspace.getByRole("tab", { name: /^Files/ }).click();
+  const files = workspace.getByRole("region", { name: "Project files" });
+  await files.getByRole("button", { name: "Folder Fieldnotes", exact: true }).click();
+  await files.getByRole("button", { name: "Folder Fieldnotes/Ideas", exact: true }).click();
+  await files.locator(".recent-notes .document-action-row > button:first-child").filter({ hasText: "A quieter workspace" }).click();
+  await expect(workspace.locator(".ProseMirror")).toContainText("Less noise.");
+  await workspace.locator(".ProseMirror").fill("Remember this project draft.");
+  // Switching must flush the edit before restoring another project's location.
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('notesdive:project-location:[null,"field"]:workspace') ?? '{}').document?.path)).toBe("Ideas/A quieter workspace.md");
+  await nav.getByRole("button", { name: "Projects", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('notesdive:project-location:[null,"field"]:workspace') ?? '{}').document?.path)).toBe("Ideas/A quieter workspace.md");
+  await page.locator(".project-select").filter({ hasText: "Research" }).click();
+  await expect(workspace.getByRole("tab", { name: "Overview", exact: true })).toHaveAttribute("aria-selected", "true");
+  await nav.getByRole("button", { name: "Project tasks", exact: true }).click();
+  await tabs.getByRole("button", { name: "Open project Field work", exact: true }).click();
+  await expect(workspace.getByRole("tab", { name: /^Files/ })).toHaveAttribute("aria-selected", "true");
+  await expect(files.getByRole("button", { name: "Folder Fieldnotes/Ideas", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(workspace.locator(".ProseMirror")).toContainText("Remember this project draft.");
+  await tabs.getByRole("button", { name: "Open project Research", exact: true }).click();
+  await expect(nav.getByRole("button", { name: "Project tasks", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await tabs.getByRole("button", { name: "Open project Field work", exact: true }).click();
+  await expect(workspace.getByRole("tab", { name: /^Files/ })).toHaveAttribute("aria-selected", "true");
+  await expect(workspace.locator(".ProseMirror")).toContainText("Less noise.");
+  await tabs.getByRole("button", { name: "Open project Research", exact: true }).click();
+  await expect(nav.getByRole("button", { name: "Project tasks", exact: true })).toHaveAttribute("aria-current", "page");
 });

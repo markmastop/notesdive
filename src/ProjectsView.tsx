@@ -1,3 +1,4 @@
+import { useProjectPreference } from "./useProjectPreference";
 import { useProjectScope } from "./useProjectScope";
 import { recentDocuments } from "./home";
 import { ResizableFileBrowser } from "./ResizableFileBrowser";
@@ -95,10 +96,9 @@ export function ProjectsView({
   const [adding, setAdding] = useState<"task" | "link" | null>(null);
   const [itemText, setItemText] = useState("");
   const [itemUrl, setItemUrl] = useState("");
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "files" | "remarkable" | "tasks" | "links">(
-    "all",
-  );
+  const locationScope = JSON.stringify([config.library ?? null, project?.id ?? null]);
+  const [query, setQuery] = useProjectPreference(locationScope, "query", "");
+  const [filter, setFilter] = useProjectPreference<"all" | "files" | "remarkable" | "tasks" | "links">(locationScope, "filter", "all");
   const pinsKey = `notesdive:project-pins:${config.library ?? "legacy"}:${project?.id ?? ""}`;
   const [pins, setPins] = useState<string[]>([]);
   useEffect(() => {
@@ -112,11 +112,11 @@ export function ProjectsView({
   });
   const [fileExpanded, setFileExpanded] = useState(new Set<string>());
   const [rmExpanded, setRmExpanded] = useState(new Set<string>());
-  const [fileFolder, setFileFolder] = useState<string | null>(null);
-  const [rmFolder, setRmFolder] = useState<string | null>(null);
-  const [streamFilter, setStreamFilter] = useState<"all" | "files" | "remarkable" | "tasks" | "links">("all");
-  const [taskMode, setTaskMode] = useState<"open" | "done" | "all">("open");
-  const [sort, setSort] = useState("modified");
+  const [fileFolder, setFileFolder] = useProjectPreference<string | null>(locationScope, "fileFolder", null);
+  const [rmFolder, setRmFolder] = useProjectPreference<string | null>(locationScope, "rmFolder", null);
+  const [streamFilter, setStreamFilter] = useProjectPreference<"all" | "files" | "remarkable" | "tasks" | "links">(locationScope, "streamFilter", "all");
+  const [taskMode, setTaskMode] = useProjectPreference<"open" | "done" | "all">(locationScope, "taskMode", "open");
+  const [sort, setSort] = useProjectPreference(locationScope, "sort", "modified");
   const [archived, setArchived] = useState(false);
   const localData = useProjectScope(project, config.library ?? null, query);
   const { loading, refresh: refreshLocal } = localData;
@@ -130,11 +130,10 @@ export function ProjectsView({
   const [newFolder, setNewFolder] = useState("");
   const folderKey = JSON.stringify(project?.folders ?? []);
   useEffect(() => {
-    setFileFolder(null); setRmFolder(null); setFileExpanded(new Set()); setRmExpanded(new Set()); setStreamFilter("all");
+    const ancestors = (folder: string | null) => new Set(folder?.split("/").map((_, index, parts) => parts.slice(0, index + 1).join("/")) ?? []);
+    setFileExpanded(ancestors(fileFolder)); setRmExpanded(ancestors(rmFolder));
     setAdding(null);
-    setQuery("");
     setCopied("");
-    setFilter("all");
     setLimit(60);
   }, [project?.id, folderKey]);
   useEffect(() => {
