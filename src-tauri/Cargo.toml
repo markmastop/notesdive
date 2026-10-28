@@ -1,6 +1,6 @@
 [package]
 name = "notesdive"
-version = "0.18.9"
+version = "0.18.10"
 description = "A quiet home for your Markdown notes"
 license = "MIT"
 authors = ["NotesDive"]
