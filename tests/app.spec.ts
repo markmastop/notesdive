@@ -4016,3 +4016,54 @@ test("each project resumes its own view, folder and document across switches and
   await tabs.getByRole("button", { name: "Open project Research", exact: true }).click();
   await expect(nav.getByRole("button", { name: "Project tasks", exact: true })).toHaveAttribute("aria-current", "page");
 });
+
+test("workspace panels align in height and all screens fit desktop and compact windows", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    if (localStorage.getItem("test-projects")) return;
+    localStorage.setItem("test-projects", JSON.stringify({ active: "layout", library: null, revision: "legacy", projects: [{
+      id: "layout", name: "Layout review", description: "A project with long lists and linked notebooks.", color: "sage", pinned: false, archived: false,
+      folders: ["/test/Fieldnotes"], defaultFolder: "/test/Fieldnotes", remarkableFolders: [{ id: "work", name: "Work" }],
+    }] }));
+  });
+  await page.goto("/"); await page.reload();
+  await page.evaluate(() => {
+    const app = (window as any).__test;
+    app.remarkable.connected = true;
+    app.files["TODO.md"] = "# Tasks\n" + Array.from({ length: 40 }, (_, i) => `- [ ] Task ${i}`).join("\n");
+    app.files["LINKS.md"] = "# Links\n[Board](https://example.com/board)\n";
+    for (let i = 0; i < 45; i++) app.files[`Folder ${i}/Note.md`] = `# Note ${i}`;
+  });
+  const nav = page.getByRole("navigation", { name: "Main navigation" });
+  const workspace = page.getByRole("region", { name: "Projects workspace" });
+  const fits = async () => {
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(await page.locator(".app-shell").evaluate((element) => element.getBoundingClientRect().bottom <= innerHeight + 1)).toBe(true);
+  };
+  for (const size of [{ width: 1600, height: 1000 }, { width: 1280, height: 820 }, { width: 760, height: 620 }]) {
+    await page.setViewportSize(size);
+    for (const name of ["Home", "All files", "All tasks", "reMarkable", "Projects", "App settings"]) {
+      await nav.getByRole("button", { name, exact: true }).click();
+      await fits();
+      await page.screenshot({ path: `test-results/layout-${name.replaceAll(" ", "-")}-${size.width}-${testInfo.project.name}.png` });
+    }
+    await page.getByRole("button", { name: "Open project Layout review", exact: true }).click();
+    await nav.getByRole("button", { name: "Project overview", exact: true }).click();
+    await workspace.getByRole("tab", { name: /^Files/ }).click();
+    await workspace.getByRole("region", { name: "Project files", exact: true }).locator(".recent-notes .document-action-row > button:first-child").filter({ hasText: "Welcome.md" }).click();
+    await expect(workspace.locator(".ProseMirror")).toContainText("A little room to think");
+    for (const name of [/^Files/, /^reMarkable/, /^Tasks/, /^Links/, /^Overview/]) {
+      await workspace.getByRole("tab", { name }).click();
+      await fits();
+      const cockpit = await workspace.locator(".project-cockpit").boundingBox();
+      const reader = await workspace.locator(".project-document-pane").boundingBox();
+      expect(Math.abs(cockpit!.height - reader!.height)).toBeLessThan(2);
+      if (size.width > 1100) expect(Math.abs(cockpit!.y - reader!.y)).toBeLessThan(2);
+      else expect(reader!.y).toBeGreaterThanOrEqual(cockpit!.y + cockpit!.height);
+      await page.screenshot({ path: `test-results/layout-project-${name.source.replaceAll("^", "")}-${size.width}-${testInfo.project.name}.png` });
+    }
+    await nav.getByRole("button", { name: "Project files", exact: true }).click(); await fits();
+    await page.screenshot({ path: `test-results/layout-project-files-page-${size.width}-${testInfo.project.name}.png` });
+    await nav.getByRole("button", { name: "Project tasks", exact: true }).click(); await fits();
+    await page.screenshot({ path: `test-results/layout-project-tasks-page-${size.width}-${testInfo.project.name}.png` });
+  }
+});

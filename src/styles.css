@@ -2806,11 +2806,12 @@ button svg {
 /* Project workspace: browse and edit without leaving the project. */
 .project-purpose.project-subtitle { background: none; margin: 0 0 14px; padding: 0; }
 .project-subtitle button { color: var(--muted); padding: 0; line-height: 1.6; }
-.project-content-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.project-content-workspace { --project-pane-height: clamp(420px, calc(100dvh - 360px), 760px); display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .project-content-workspace.has-reader { grid-template-columns: minmax(340px, 1fr) minmax(420px, 1.15fr); }
-.project-cockpit.overview { grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); grid-template-areas: "documents tasks" "documents links" "documents resume"; }
+.project-cockpit.overview { grid-template-columns: minmax(0, 1.8fr) minmax(250px, 1fr); grid-template-areas: "documents tasks" "documents links" "documents resume"; align-items: stretch; }
 .project-content-workspace.has-reader .project-cockpit.overview { grid-template-columns: minmax(0, 1fr); grid-template-areas: "documents" "tasks" "links" "resume"; }
-.project-stream { min-height: 340px; }
+.project-stream { min-height: 340px; display: flex; flex-direction: column; }
+.project-stream-list { min-height: 0; flex: 1; }
 .stream-filters { margin: 14px 0 6px; }
 .project-stream-list { max-height: 570px; overflow: auto; }
 .project-stream-list > button { width: 100%; text-align: left; display: flex; align-items: center; gap: 12px; }
@@ -2819,10 +2820,15 @@ button svg {
 .project-file-controls { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 12px 0; font-size: 12px; }
 .project-file-controls > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-file-controls select { max-width: 145px; font-size: 12px; }
-.project-file-browser { display: grid; grid-template-columns: minmax(0, var(--folder-width, 210px)) 12px minmax(0, 1fr); gap: 0; min-height: 350px; }
-.project-tree { border-right: 1px solid var(--border); padding-right: 10px; min-width: 0; max-height: 620px; overflow: auto; }
-.project-file-browser > .recent-notes { max-height: 620px; overflow: auto; }
-.project-document-pane { position: sticky; top: 0; height: min(760px, calc(100vh - 150px)); min-height: 420px; min-width: 0; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: white; }
+.project-file-browser { display: grid; grid-template-columns: minmax(0, var(--folder-width, 210px)) 12px minmax(0, 1fr); gap: 0; flex: 1; min-height: 0; overflow: hidden; }
+.project-tree { border-right: 1px solid var(--border); padding-right: 10px; min-width: 0; min-height: 0; overflow: auto; }
+.project-file-browser > .recent-notes { min-height: 0; min-width: 0; overflow: auto; }
+.project-document-pane { position: sticky; top: 0; height: var(--project-pane-height); min-height: 0; min-width: 0; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: white; }
+.project-cockpit:not(.overview), .project-content-workspace.has-reader > .project-cockpit { height: var(--project-pane-height); min-height: 0; }
+.project-cockpit:not(.overview) > .project-panel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.project-cockpit:not(.overview) > .project-panel > :not(.project-file-browser, .project-tasks, .project-links) { flex-shrink: 0; }
+.project-cockpit:not(.overview) :is(.project-tasks, .project-links) { min-height: 0; overflow: auto; align-content: start; }
+.project-content-workspace.has-reader > .project-cockpit.overview { overflow: auto; align-content: start; grid-template-rows: repeat(4, max-content); }
 .project-document-pane .notes-reader { display: flex; height: 100%; width: 100%; min-width: 0; }
 .project-document-pane .notes-reader-header { flex-wrap: wrap; gap: 8px; }
 .project-document-pane .notes-reader-path { flex: 1; min-width: 100px; }
@@ -2831,7 +2837,7 @@ button svg {
 .project-detail [role="tab"] .heading-count { margin-left: 4px; font-size: 10px; }
 @media (max-width: 1100px) {
   .project-content-workspace.has-reader { grid-template-columns: minmax(0, 1fr); }
-  .project-document-pane { position: relative; height: 600px; }
+  .project-document-pane { position: relative; height: var(--project-pane-height); }
 }
 @media (max-width: 800px) {
   .project-cockpit.overview { grid-template-columns: minmax(0, 1fr); grid-template-areas: "documents" "tasks" "resume" "links"; }
