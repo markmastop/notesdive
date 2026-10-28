@@ -4048,6 +4048,11 @@ test("workspace panels align in height and all screens fit desktop and compact w
     }
     await page.getByRole("button", { name: "Open project Layout review", exact: true }).click();
     await nav.getByRole("button", { name: "Project overview", exact: true }).click();
+    await workspace.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(workspace.locator(".project-settings")).toBeVisible();
+    await fits();
+    await page.screenshot({ path: `test-results/layout-project-settings-${size.width}-${testInfo.project.name}.png` });
+    await workspace.getByRole("button", { name: "Cancel", exact: true }).click();
     await workspace.getByRole("tab", { name: /^Files/ }).click();
     await workspace.getByRole("region", { name: "Project files", exact: true }).locator(".recent-notes .document-action-row > button:first-child").filter({ hasText: "Welcome.md" }).click();
     await expect(workspace.locator(".ProseMirror")).toContainText("A little room to think");
