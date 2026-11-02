@@ -2902,3 +2902,6 @@ button svg {
 .research-answer pre { white-space: pre-wrap; }
 .research-error { font-size: 12px; color: #a53636; white-space: pre-wrap; }
 .research-notice { font-size: 12px; color: #277063; }
+
+.research-request-status { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.research-turn { scroll-margin-top: 12px; }

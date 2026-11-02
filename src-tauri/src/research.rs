@@ -46,7 +46,9 @@ fn client() -> Result<Client> {
         .map_err(|_| "Could not start the OpenRouter connection.".into())
 }
 async fn response(request: RequestBuilder, limit: usize) -> Result<Value> {
-    let mut response = request.send().await.map_err(|_| "Could not reach OpenRouter. Check your connection or try again later.")?;
+    let mut response = request.send().await.map_err(|error| if error.is_timeout() {
+        "OpenRouter took too long to respond. Your question is still available; retry or choose another free model."
+    } else { "Could not reach OpenRouter. Check your connection or try again later." })?;
     if !response.status().is_success() {
         return Err(match response.status().as_u16() {
             401 | 403 => "OpenRouter rejected this key. Reconnect with a valid API key.".into(),

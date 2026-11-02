@@ -27,9 +27,27 @@ export function ResearchPanel({ noteId, noteName, noteText, disabled, append, cl
   const [sourceExcerpt, setSourceExcerpt] = useState("");
   const [messages, setMessages] = useState<ResearchMessage[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const latestAnswer = useRef<HTMLElement>(null);
+  const requestStatus = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!asking) return;
+    setElapsed(0);
+    const started = Date.now();
+    const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    requestStatus.current?.scrollIntoView({ block: "nearest" });
+    return () => window.clearInterval(timer);
+  }, [asking]);
+  useEffect(() => {
+    if (turns.length) latestAnswer.current?.scrollIntoView({ block: "start" });
+  }, [turns.length]);
+  useEffect(() => {
+    if (error || notice) requestStatus.current?.scrollIntoView({ block: "nearest" });
+  }, [error, notice]);
   const active = useRef(true);
   // Keep the conversation across navigation; ignore completions after the app unmounts.
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -70,7 +88,7 @@ export function ResearchPanel({ noteId, noteName, noteText, disabled, append, cl
     const submitted = question.trim();
     const sentSources = [...new Map([...turns.flatMap((turn) => turn.sources), ...sources].map((source) => [source.url, { ...source }])).values()];
     const history: ResearchMessage[] = [...messages, { role: "user", content: researchPrompt(submitted, sources, includeNote && noteId ? noteText : undefined) }];
-    setBusy(true);
+    setBusy(true); setAsking(true);
     try {
       const result = await researchApi.ask(model, history);
       if (!active.current) return;
@@ -78,7 +96,7 @@ export function ResearchPanel({ noteId, noteName, noteText, disabled, append, cl
       setTurns((previous) => [...previous, { question: submitted, ...result, sources: sentSources, date: new Date() }]);
       setQuestion("");
     } catch (e) { if (active.current) setError(String(e)); }
-    finally { if (active.current) setBusy(false); }
+    finally { if (active.current) { setBusy(false); setAsking(false); } }
   };
   return <aside className="research-panel" aria-label="Research assistant">
     <header className="research-heading"><div><strong>Research</strong><small>OpenRouter · free models only</small></div>
@@ -119,9 +137,15 @@ export function ResearchPanel({ noteId, noteName, noteText, disabled, append, cl
         </details>
         <div className="research-actions"><button className="quiet-button research-ask" disabled={!desktop || checking || !connected || !model || busy || !question.trim() || messages.length >= 12} onClick={() => void ask()}>{busy ? <LoaderCircle size={14} className="spin" /> : <Search size={14} />}{busy ? "Working…" : turns.length ? "Ask follow-up" : "Ask OpenRouter"}</button>
           <button className="quiet-button" disabled={!desktop || !question.trim()} onClick={() => void invoke("open_web_link", { url: `https://www.google.com/search?q=${encodeURIComponent(question.trim())}` }).catch(() => setError("Could not open Google in your browser."))}>Google ↗</button></div>
+        <div ref={requestStatus} className="research-request-status" aria-live="polite">
+          {asking && <p role="status">Waiting for OpenRouter · {elapsed}s elapsed. Your question has been submitted; the model has not returned an answer yet.</p>}
+          {asking && elapsed >= 20 && <p className="research-hint">This free model is taking longer to respond. A result or error will appear here; you do not need to submit the question again.</p>}
+          {error && <p className="research-error" role="alert">{error}</p>}
+          {notice && <p className="research-notice" role="status">{notice}</p>}
+        </div>
       </section>
       {!!turns.length && <section className="research-step"><h3>2. Review and add</h3><p className="research-hint">Review claims and links before use. Edit an answer to select the portion you want to keep.</p>
-        {turns.map((turn, i) => <article className="research-turn" key={i}><h4>{turn.question}</h4>
+        {turns.map((turn, i) => <article className="research-turn" key={i} ref={i === turns.length - 1 ? latestAnswer : undefined}><h4>{turn.question}</h4>
           {turn.truncated && <p className="research-hint" role="status">Partial answer: the model reached its output limit. You can keep this text or ask it to continue.</p>}
           <div className="markdown-preview research-answer" onClickCapture={(e) => openWebLink(e, setError)} dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.content) }} />
           <details><summary>Edit text to insert</summary><textarea aria-label={`Edit research answer ${i + 1}`} rows={8} disabled={busy} value={turn.content} onChange={(e) => setTurns((previous) => previous.map((t, index) => index === i ? { ...t, content: e.target.value } : t))} /></details>
@@ -131,8 +155,6 @@ export function ResearchPanel({ noteId, noteName, noteText, disabled, append, cl
         <button className="quiet-button" disabled={busy} onClick={() => { setMessages([]); setTurns([]); setNotice(""); setError(""); }}>New conversation</button>
         <small>New conversation clears previous questions and answers. Supplied sources remain.</small>
       </section>}
-      {error && <p className="research-error" role="alert">{error}</p>}
-      {notice && <p className="research-notice" role="status">{notice}</p>}
     </div>
   </aside>;
 }

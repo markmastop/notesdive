@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }) => {
         { id: "inbox", parent: "", name: "Quick sheets", isFolder: false, modified: null, pinned: false },
       ],
     };
-    const research = { truncated: false, connected: false, requests: [] as any[], fail: false, paused: false, finish: null as null | (() => void) };
+    const research = { content: "A useful **research answer** with [a source](https://example.com/evidence).", truncated: false, connected: false, requests: [] as any[], fail: false, paused: false, finish: null as null | (() => void) };
     let id = 0;
     const callbacks: Record<number, (event: unknown) => void> = {};
     const events: Record<string, number[]> = {};
@@ -147,7 +147,7 @@ test.beforeEach(async ({ page }) => {
             research.requests.push(args);
             if (research.paused) await new Promise<void>((resolve) => { research.finish = resolve; });
             if (research.fail) throw "The free model's request limit was reached.";
-            return { content: "A useful **research answer** with [a source](https://example.com/evidence).", model: "test/research:free", truncated: research.truncated };
+            return { content: research.content, model: "test/research:free", truncated: research.truncated };
           }
           if (command === "save_pdf") { (window as any).__test.exportedPdf = args; return `/test/${args.filename}`; }
           if (command === "update_platform") return "darwin-aarch64";
@@ -4233,4 +4233,28 @@ test("research retains partial answers and marks inserted text as incomplete", a
   await expect(panel.getByRole("alert")).toHaveCount(0);
   await panel.getByRole("button", { name: "Append answer + sources to note" }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__test.files["Welcome.md"])).toContain("> Partial AI answer: the model reached its output limit.");
+});
+
+
+test("research shows waiting time and scrolls a substantive follow-up into view", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => { const state = (window as any).__test.research; state.connected = true; state.content = "Long earlier answer.\n\n".repeat(80); });
+  await page.getByRole("button", { name: "Toggle research assistant" }).click();
+  const panel = page.getByRole("complementary", { name: "Research assistant" });
+  await panel.getByLabel("Research question").fill("ping");
+  await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "ping", exact: true })).toBeVisible();
+  await page.evaluate(() => { const state = (window as any).__test.research; state.paused = true; state.content = "A visible substantive answer."; });
+  await panel.getByLabel("Research question").fill("Waarom maar 10000 regels uit sql fabric");
+  await panel.getByRole("button", { name: "Ask follow-up" }).click();
+  await expect(panel.getByRole("status")).toContainText("Waiting for OpenRouter");
+  await expect(panel.getByRole("status")).toBeInViewport();
+  await expect(panel.getByRole("status")).toContainText("1s elapsed");
+  await expect(panel.getByLabel("Research question")).toHaveValue("Waarom maar 10000 regels uit sql fabric");
+  await page.evaluate(() => (window as any).__test.research.finish());
+  const answer = panel.locator(".research-turn").last();
+  await expect(answer).toContainText("A visible substantive answer.");
+  await expect(answer.getByRole("heading")).toBeInViewport();
+  await expect(panel.getByText("Waiting for OpenRouter", { exact: false })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__test.research.requests.length)).toBe(2);
 });
