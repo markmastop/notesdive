@@ -66,7 +66,7 @@ test.beforeEach(async ({ page }) => {
         { id: "inbox", parent: "", name: "Quick sheets", isFolder: false, modified: null, pinned: false },
       ],
     };
-    const research = { connected: false, requests: [] as any[], fail: false, paused: false, finish: null as null | (() => void) };
+    const research = { truncated: false, connected: false, requests: [] as any[], fail: false, paused: false, finish: null as null | (() => void) };
     let id = 0;
     const callbacks: Record<number, (event: unknown) => void> = {};
     const events: Record<string, number[]> = {};
@@ -147,7 +147,7 @@ test.beforeEach(async ({ page }) => {
             research.requests.push(args);
             if (research.paused) await new Promise<void>((resolve) => { research.finish = resolve; });
             if (research.fail) throw "The free model's request limit was reached.";
-            return { content: "A useful **research answer** with [a source](https://example.com/evidence).", model: "test/research:free" };
+            return { content: "A useful **research answer** with [a source](https://example.com/evidence).", model: "test/research:free", truncated: research.truncated };
           }
           if (command === "save_pdf") { (window as any).__test.exportedPdf = args; return `/test/${args.filename}`; }
           if (command === "update_platform") return "darwin-aarch64";
@@ -4216,4 +4216,21 @@ test("global research tab works on every screen and retains the conversation whe
   await page.setViewportSize({ width: 760, height: 520 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "test-results/research-global-compact.png", animations: "disabled" });
+});
+
+
+test("research retains partial answers and marks inserted text as incomplete", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => { (window as any).__test.research.connected = true; (window as any).__test.research.truncated = true; });
+  await page.getByRole("button", { name: "All files", exact: true }).click();
+  await page.getByRole("button", { name: "Welcome", exact: true }).click();
+  await page.getByRole("button", { name: "Toggle research assistant" }).click();
+  const panel = page.getByRole("complementary", { name: "Research assistant" });
+  await panel.getByLabel("Research question").fill("ping");
+  await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
+  await expect(panel.getByRole("status")).toContainText("Partial answer");
+  await expect(panel.locator(".research-answer")).toContainText("research answer");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Append answer + sources to note" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__test.files["Welcome.md"])).toContain("> Partial AI answer: the model reached its output limit.");
 });

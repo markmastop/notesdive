@@ -15,6 +15,11 @@ describe("research provenance", () => {
     expect(text).toContain("Added 2026-11-02");
     expect(text).toContain("not been independently verified");
   });
+  it("marks truncated answers in saved Markdown", () => {
+    const text = researchMarkdown("Partial text", "test/model:free", [], new Date("2026-11-02T10:00:00Z"), true);
+    expect(text).toContain("> Partial AI answer: the model reached its output limit.");
+    expect(text).toContain("Partial text");
+  });
   it("rejects executable and local source URLs", () => {
     for (const url of ["javascript:alert(1)", "file:///etc/passwd", "data:text/html,test", "relative/path"]) {
       expect(() => researchSource("Source", url, "")).toThrow();

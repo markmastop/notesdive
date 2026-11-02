@@ -6,7 +6,7 @@ import { renderMarkdown } from "./markdown";
 import { openWebLink } from "./webLinks";
 import { researchApi, researchMarkdown, researchPrompt, researchSource, type ResearchMessage, type ResearchModel, type ResearchSource } from "./research";
 
-type Turn = { question: string; content: string; model: string; sources: ResearchSource[]; date: Date };
+type Turn = { question: string; content: string; model: string; truncated: boolean; sources: ResearchSource[]; date: Date };
 export function ResearchPanel({ noteId, noteName, noteText, disabled, append, close }: {
   noteId: string | null; noteName: string | null; noteText: string; disabled: boolean;
   append: (markdown: string) => boolean; close: () => void;
@@ -122,9 +122,10 @@ export function ResearchPanel({ noteId, noteName, noteText, disabled, append, cl
       </section>
       {!!turns.length && <section className="research-step"><h3>2. Review and add</h3><p className="research-hint">Review claims and links before use. Edit an answer to select the portion you want to keep.</p>
         {turns.map((turn, i) => <article className="research-turn" key={i}><h4>{turn.question}</h4>
+          {turn.truncated && <p className="research-hint" role="status">Partial answer: the model reached its output limit. You can keep this text or ask it to continue.</p>}
           <div className="markdown-preview research-answer" onClickCapture={(e) => openWebLink(e, setError)} dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.content) }} />
           <details><summary>Edit text to insert</summary><textarea aria-label={`Edit research answer ${i + 1}`} rows={8} disabled={busy} value={turn.content} onChange={(e) => setTurns((previous) => previous.map((t, index) => index === i ? { ...t, content: e.target.value } : t))} /></details>
-          <button className="quiet-button" disabled={disabled || busy || !turn.content.trim()} title={noteName ? `Append to ${noteName}` : "Open a Markdown note first"} onClick={() => { if (append(researchMarkdown(turn.content, turn.model, turn.sources, turn.date))) setNotice(`Added to ${noteName}.`); else setError("Open an editable Markdown note before adding this answer."); }}>Append answer + sources to note</button>
+          <button className="quiet-button" disabled={disabled || busy || !turn.content.trim()} title={noteName ? `Append to ${noteName}` : "Open a Markdown note first"} onClick={() => { if (append(researchMarkdown(turn.content, turn.model, turn.sources, turn.date, turn.truncated))) setNotice(`Added to ${noteName}.`); else setError("Open an editable Markdown note before adding this answer."); }}>Append answer + sources to note</button>
           <small>{turn.model} · {turn.sources.length} supplied sources</small>
         </article>)}
         <button className="quiet-button" disabled={busy} onClick={() => { setMessages([]); setTurns([]); setNotice(""); setError(""); }}>New conversation</button>

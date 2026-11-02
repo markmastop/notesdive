@@ -3,7 +3,7 @@ import { webUrl } from "./webLinks";
 export type ResearchModel = { id: string; name: string };
 export type ResearchMessage = { role: "user" | "assistant"; content: string };
 export type ResearchSource = { title: string; url: string; excerpt: string };
-export type ResearchAnswer = { content: string; model: string };
+export type ResearchAnswer = { content: string; model: string; truncated: boolean };
 export const researchApi = {
   connected: (): Promise<boolean> => invoke("research_connected"),
   connect: (apiKey: string): Promise<void> => invoke("research_connect", { apiKey }),
@@ -22,7 +22,7 @@ export function researchPrompt(question: string, sources: ResearchSource[], note
   ].filter(Boolean).join("\n\n");
 }
 const label = (value: string) => value.replace(/[\r\n]+/g, " ").replace(/[\\[\]]/g, "\\$&");
-export function researchMarkdown(content: string, model: string, sources: ResearchSource[], date = new Date()): string {
+export function researchMarkdown(content: string, model: string, sources: ResearchSource[], date = new Date(), truncated = false): string {
   const links = sources.map((s) => `- [${label(s.title)}](<${s.url.replace(/>/g, "%3E")}>)`).join("\n");
-  return `${content.trim()}\n\n${links ? `### Supplied sources\n\n${links}\n\n` : ""}> AI draft · OpenRouter / ${label(model)} · Added ${date.toISOString().slice(0, 10)}. Links and claims have not been independently verified.\n`;
+  return `${truncated ? "> Partial AI answer: the model reached its output limit.\n\n" : ""}${content.trim()}\n\n${links ? `### Supplied sources\n\n${links}\n\n` : ""}> AI draft · OpenRouter / ${label(model)} · Added ${date.toISOString().slice(0, 10)}. Links and claims have not been independently verified.\n`;
 }

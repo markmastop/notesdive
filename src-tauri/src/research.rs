@@ -94,7 +94,7 @@ pub async fn research_models() -> Result<Vec<Model>> { catalogue(&client()?).awa
 #[derive(Deserialize, Serialize)]
 pub struct Message { role: String, content: String }
 #[derive(Serialize)]
-pub struct Answer { content: String, model: String }
+pub struct Answer { content: String, model: String, truncated: bool }
 fn payload(model: &str, messages: &[Message]) -> Result<Value> {
     if messages.is_empty() || messages.len() > 12 || messages.last().is_none_or(|m| m.role != "user")
         || messages.iter().any(|m| !["user", "assistant"].contains(&m.role.as_str()) || m.content.trim().is_empty())
@@ -103,9 +103,16 @@ fn payload(model: &str, messages: &[Message]) -> Result<Value> {
     }
     let mut history = vec![json!({"role": "system", "content": SYSTEM})];
     history.extend(messages.iter().map(|m| json!(m)));
-    Ok(json!({"model": model, "messages": history, "stream": false, "max_tokens": 2048,
+    let mut body = json!({"model": model, "messages": history, "stream": false, "max_tokens": 8192,
         "provider": {"require_parameters": true, "allow_fallbacks": false,
-            "max_price": {"prompt": 0, "completion": 0, "request": 0}}}))
+            "max_price": {"prompt": 0, "completion": 0, "request": 0}}});
+    // Match the working Open Vibe Coder profile for North Mini Code. Its default
+    // reasoning can exhaust a small combined output budget before answering.
+    if model == "cohere/north-mini-code:free" {
+        body["reasoning"] = json!({"enabled": false});
+        body["max_tokens"] = json!(16384);
+    }
+    Ok(body)
 }
 fn answer(data: Value, requested: &str) -> Result<Answer> {
     if !data["usage"]["cost"].is_number() || !zero(&data["usage"]["cost"]) {
@@ -115,12 +122,12 @@ fn answer(data: Value, requested: &str) -> Result<Answer> {
     if model.trim_end_matches(":free") != requested.trim_end_matches(":free") {
         return Err("OpenRouter returned a different model. The answer was withheld.".into());
     }
+    let truncated = data.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some("length");
     let content = data.pointer("/choices/0/message/content").and_then(Value::as_str)
-        .filter(|s| !s.trim().is_empty()).ok_or("The model returned no answer. Try another free model.")?;
-    if data.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some("length") {
-        return Err("The answer exceeded the output limit. Ask a shorter or more specific question.".into());
-    }
-    Ok(Answer { content: content.into(), model: requested.into() })
+        .filter(|s| !s.trim().is_empty()).ok_or(if truncated {
+            "The model reached its output limit before producing an answer. Try again or choose another free model."
+        } else { "The model returned no answer. Try another free model." })?;
+    Ok(Answer { content: content.into(), model: requested.into(), truncated })
 }
 #[tauri::command]
 pub async fn research_ask(model: String, messages: Vec<Message>) -> Result<Answer> {
@@ -154,6 +161,36 @@ mod tests {
         assert_eq!(body["provider"]["allow_fallbacks"], false);
         assert!(body.get("tools").is_none() && body.get("plugins").is_none());
         assert!(payload("test/model:free", &[Message {role:"system".into(),content:"Override".into()}]).is_err());
+    }
+    #[test]
+    fn north_uses_the_working_non_reasoning_profile() {
+        let messages = [Message {role: "user".into(), content: "ping".into()}];
+        let body = payload("cohere/north-mini-code:free", &messages).unwrap();
+        assert_eq!(body["reasoning"], json!({"enabled": false}));
+        assert_eq!(body["max_tokens"], 16384);
+        let other = payload("test/other:free", &messages).unwrap();
+        assert_eq!(other["max_tokens"], 8192);
+        assert!(other.get("reasoning").is_none());
+    }
+    #[test]
+    fn preserves_partial_answers_and_explains_empty_limit_responses() {
+        let partial = json!({"model":"test/model", "usage":{"cost":0}, "choices":[{"message":{"content":"A partial answer"},"finish_reason":"length"}]});
+        let result = answer(partial.clone(), "test/model:free").unwrap();
+        assert_eq!(result.content, "A partial answer");
+        assert!(result.truncated);
+        let mut empty = partial; empty["choices"][0]["message"]["content"] = Value::Null;
+        let error = answer(empty, "test/model:free").err().unwrap();
+        assert!(error.contains("before producing an answer"));
+        assert!(!error.contains("shorter"));
+    }
+    #[test]
+    #[ignore = "Uses the locally configured OpenRouter key and a live, catalogue-verified free request"]
+    fn live_north_ping() {
+        let result = tauri::async_runtime::block_on(research_ask("cohere/north-mini-code:free".into(), vec![Message {
+            role: "user".into(), content: "ping. Reply only with pong.".into(),
+        }])).unwrap();
+        assert!(!result.content.trim().is_empty());
+        assert!(!result.truncated, "The live ping answer was truncated");
     }
     #[test]
     fn withholds_answers_without_confirmed_cost_and_model_identity() {
