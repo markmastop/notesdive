@@ -4144,7 +4144,7 @@ test("research reviews free-model answers and appends sources with autosave", as
   await expect(page.getByRole("textbox", { name: "Markdown editor" })).toContainText("AI draft · OpenRouter");
 });
 
-test("research errors preserve the question and late answers cannot cross documents", async ({ page }) => {
+test("research preserves pending answers across navigation and only appends on request", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => { (window as any).__test.research.connected = true; (window as any).__test.research.fail = true; });
   await page.getByRole("button", { name: "All files", exact: true }).click();
@@ -4158,9 +4158,62 @@ test("research errors preserve the question and late answers cannot cross docume
   await page.evaluate(() => { (window as any).__test.research.fail = false; (window as any).__test.research.paused = true; });
   await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
   await expect.poll(() => page.evaluate(() => !!(window as any).__test.research.finish)).toBe(true);
+  await panel.getByRole("button", { name: "Close research" }).click();
   await page.getByRole("button", { name: "Back to notes", exact: true }).click();
   await page.getByRole("button", { name: "A quieter workspace", exact: true }).click();
   await page.evaluate(() => (window as any).__test.research.finish());
-  await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Toggle research assistant" }).click();
+  await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toHaveCount(1);
+  await expect(panel.locator(".research-target")).toContainText("A quieter workspace.md");
   expect(await page.evaluate(() => (window as any).__test.files["Ideas/A quieter workspace.md"])).not.toContain("research answer");
+  await panel.getByRole("button", { name: "Append answer + sources to note" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__test.files["Ideas/A quieter workspace.md"])).toContain("research answer");
+});
+
+
+test("global research tab works on every screen and retains the conversation when hidden", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => { (window as any).__test.research.connected = true; });
+  const toggle = page.getByRole("button", { name: "Toggle research assistant" });
+  const panel = page.getByRole("complementary", { name: "Research assistant" });
+  await toggle.click();
+  await expect(page.getByRole("button", { name: "Home", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(panel.getByLabel("Include this note as context")).toBeDisabled();
+  await panel.getByLabel("Research question").fill("A question from Home");
+  await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toBeDisabled();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(panel.getByRole("heading", { name: "A question from Home", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Home", exact: true }).click();
+  for (const screen of ["Projects", "All tasks", "All files", "reMarkable", "App settings", "Home"]) {
+    await panel.getByRole("button", { name: "Close research" }).click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(panel).not.toBeVisible();
+    await page.getByRole("button", { name: screen, exact: true }).click();
+    await toggle.click();
+    await expect(panel.getByRole("heading", { name: "A question from Home", exact: true })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toBeDisabled();
+  }
+  await panel.getByLabel("Research question").fill("Keep this draft too");
+  await panel.getByLabel("Research question").press("Escape");
+  await expect(toggle).toBeFocused();
+  await expect(panel).not.toBeVisible();
+  await toggle.click();
+  await expect(panel.getByLabel("Research question")).toHaveValue("Keep this draft too");
+  await panel.getByRole("button", { name: "Close research" }).click();
+  await page.getByRole("button", { name: "All files", exact: true }).click();
+  await page.getByRole("button", { name: "Welcome", exact: true }).click();
+  await toggle.click();
+  await panel.getByLabel("Include this note as context").check();
+  await panel.getByRole("button", { name: "Close research" }).click();
+  await page.getByRole("button", { name: "Back to notes", exact: true }).click();
+  await page.getByRole("button", { name: "A quieter workspace", exact: true }).click();
+  await toggle.click();
+  await expect(panel.getByLabel("Include this note as context")).not.toBeChecked();
+  await expect(panel.locator(".research-target")).toContainText("A quieter workspace.md");
+  await page.screenshot({ path: "test-results/research-global-desktop.png", animations: "disabled" });
+  await page.setViewportSize({ width: 760, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/research-global-compact.png", animations: "disabled" });
 });

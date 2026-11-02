@@ -7,9 +7,9 @@ import { openWebLink } from "./webLinks";
 import { researchApi, researchMarkdown, researchPrompt, researchSource, type ResearchMessage, type ResearchModel, type ResearchSource } from "./research";
 
 type Turn = { question: string; content: string; model: string; sources: ResearchSource[]; date: Date };
-export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
-  noteName: string; noteText: string; disabled: boolean;
-  append: (markdown: string) => void; close: () => void;
+export function ResearchPanel({ noteId, noteName, noteText, disabled, append, close }: {
+  noteId: string | null; noteName: string | null; noteText: string; disabled: boolean;
+  append: (markdown: string) => boolean; close: () => void;
 }) {
   const [connected, setConnected] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -20,6 +20,7 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
   const [loadingModels, setLoadingModels] = useState(false);
   const [question, setQuestion] = useState("");
   const [includeNote, setIncludeNote] = useState(false);
+  useEffect(() => { setIncludeNote(false); }, [noteId]);
   const [sources, setSources] = useState<ResearchSource[]>([]);
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
@@ -30,7 +31,7 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const active = useRef(true);
-  // Ignore completions after navigating away from this document; never insert automatically.
+  // Keep the conversation across navigation; ignore completions after the app unmounts.
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const refreshModels = async () => {
     setLoadingModels(true);
@@ -68,7 +69,7 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
     }
     const submitted = question.trim();
     const sentSources = [...new Map([...turns.flatMap((turn) => turn.sources), ...sources].map((source) => [source.url, { ...source }])).values()];
-    const history: ResearchMessage[] = [...messages, { role: "user", content: researchPrompt(submitted, sources, includeNote ? noteText : undefined) }];
+    const history: ResearchMessage[] = [...messages, { role: "user", content: researchPrompt(submitted, sources, includeNote && noteId ? noteText : undefined) }];
     setBusy(true);
     try {
       const result = await researchApi.ask(model, history);
@@ -86,7 +87,7 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
     </header>
     <div className="research-scroll">
       <p className="research-hint">Ask, review, then add to your note. No live web search: supply excerpts below or search with Google.</p>
-      <details><summary>About this conversation</summary><p className="research-hint">Only text you explicitly submit is sent to OpenRouter. Follow-ups include previous questions, answers and context until you start a new conversation. Closing the panel or switching notes clears the conversation. Add answers you want to keep to your note first.</p></details>
+      <details><summary>About this conversation</summary><p className="research-hint">Only text you explicitly submit is sent to OpenRouter. Follow-ups include previous questions, answers and context until you start a new conversation. The conversation stays available when you close the panel or switch screens. It is cleared when you start a new conversation or quit NotesDive.</p></details>
       {!desktop && <p role="status">Research is available in the NotesDive desktop app.</p>}
       {checking && <p role="status">Checking connection…</p>}
       {settings && <section className="research-settings" aria-label="OpenRouter connection">
@@ -95,6 +96,7 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
           {connected && <button className="quiet-button" disabled={busy} onClick={() => void connection(true)}>Disconnect</button>}</div>
         <small>Your key is stored in the system keychain. Free model availability and request limits vary.</small>
       </section>}
+      <p className="research-target">{noteName ? <>Current note: <strong>{noteName}</strong></> : "Open a Markdown note to use its context or append an answer. You can ask questions from any screen."}</p>
       <section className="research-step"><h3>1. Ask</h3>
         <label>Free model<select aria-label="Free research model" value={model} disabled={busy || loadingModels || !models.length} onChange={(e) => setModel(e.target.value)}>
           {!models.length && <option value="">{loadingModels ? "Loading free models…" : "No models loaded"}</option>}
@@ -102,8 +104,8 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
         </select></label>
         <button className="quiet-button" disabled={busy || loadingModels || !desktop} onClick={() => { setError(""); void refreshModels(); }}>Refresh free models</button>
         <label>Question<textarea aria-label="Research question" placeholder="What would you like to find out?" rows={3} maxLength={16000} value={question} disabled={busy} onChange={(e) => setQuestion(e.target.value)} /></label>
-        <label className="research-checkbox"><input type="checkbox" checked={includeNote} disabled={busy} onChange={(e) => setIncludeNote(e.target.checked)} />Include this note as context</label>
-        {includeNote && <small>The full current note will be sent with your next question.</small>}
+        <label className="research-checkbox"><input type="checkbox" checked={includeNote && !!noteId} disabled={busy || !noteId} onChange={(e) => setIncludeNote(e.target.checked)} />Include this note as context</label>
+        {includeNote && noteId && <small>The full current note will be sent with your next question.</small>}
         <details><summary>Supply source links and excerpts ({sources.length})</summary>
           <p className="research-hint">Paste text from a source to let the model use it. Links alone are not read. These sources are included with each follow-up.</p>
           {sources.map((source, i) => <div className="research-source" key={`${source.url}:${i}`}><a data-web-link href={source.url} onClick={(e) => openWebLink(e, setError)}>{source.title}</a><button className="icon-button" disabled={busy} aria-label={`Remove source ${source.title}`} onClick={() => setSources(sources.filter((_, index) => index !== i))}><X size={14} /></button></div>)}
@@ -122,7 +124,7 @@ export function ResearchPanel({ noteName, noteText, disabled, append, close }: {
         {turns.map((turn, i) => <article className="research-turn" key={i}><h4>{turn.question}</h4>
           <div className="markdown-preview research-answer" onClickCapture={(e) => openWebLink(e, setError)} dangerouslySetInnerHTML={{ __html: renderMarkdown(turn.content) }} />
           <details><summary>Edit text to insert</summary><textarea aria-label={`Edit research answer ${i + 1}`} rows={8} disabled={busy} value={turn.content} onChange={(e) => setTurns((previous) => previous.map((t, index) => index === i ? { ...t, content: e.target.value } : t))} /></details>
-          <button className="quiet-button" disabled={disabled || busy || !turn.content.trim()} title={`Append to ${noteName}`} onClick={() => { append(researchMarkdown(turn.content, turn.model, turn.sources, turn.date)); setNotice(`Added to ${noteName}.`); }}>Append answer + sources to note</button>
+          <button className="quiet-button" disabled={disabled || busy || !turn.content.trim()} title={noteName ? `Append to ${noteName}` : "Open a Markdown note first"} onClick={() => { if (append(researchMarkdown(turn.content, turn.model, turn.sources, turn.date))) setNotice(`Added to ${noteName}.`); else setError("Open an editable Markdown note before adding this answer."); }}>Append answer + sources to note</button>
           <small>{turn.model} · {turn.sources.length} supplied sources</small>
         </article>)}
         <button className="quiet-button" disabled={busy} onClick={() => { setMessages([]); setTurns([]); setNotice(""); setError(""); }}>New conversation</button>

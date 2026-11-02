@@ -2869,11 +2869,17 @@ button svg {
 .project-quick-actions { display: flex; gap: 4px; flex: 0 0 auto; }
 .project-toolbar .project-quick-actions button { width: 34px; height: 34px; padding: 7px; justify-content: center; }
 
-/* Research stays alongside the note; only its own content scrolls. */
-.document-research-layout { position: relative; display: flex; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
-.document-research-editor { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
-.document-research-editor > .document-panels { flex: 1; min-height: 0; }
-.research-panel { display: flex; flex-direction: column; width: clamp(300px, 32vw, 440px); flex-shrink: 0; min-height: 0; border-left: 1px solid var(--border); background: #fafbf8; color: var(--text); }
+/* Global research drawer and its permanent right-edge tab. */
+.research-rail { flex: 0 0 28px; width: 28px; padding: 12px 0; border-left: 1px solid var(--border); background: #f3f0eb; }
+.research-tab { width: 28px; min-height: 160px; display: flex; align-items: center; flex-direction: column; gap: 12px; padding: 12px 4px; border: 0; border-radius: 6px 0 0 6px; background: #ece6de; color: #71593f; cursor: pointer; }
+.research-tab span { writing-mode: vertical-rl; font-size: 12px; letter-spacing: .5px; }
+.research-tab:hover, .research-tab.active { background: #e4d7c5; box-shadow: inset 2px 0 #aa7b43; }
+.research-drawer { position: fixed; z-index: 15; top: 0; bottom: 0; right: 28px; width: min(440px, calc(100vw - 76px)); box-shadow: -10px 0 30px #46382720; animation: research-slide-in 200ms ease; }
+.research-drawer[hidden] { display: none; }
+@keyframes research-slide-in { from { transform: translateX(calc(100% + 28px)); } to { transform: translateX(0); } }
+.research-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; border-left: 1px solid var(--border); background: #fafbf8; color: var(--text); }
+.research-target { padding: 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .research-drawer { animation: none; } }
 .research-heading { display: flex; align-items: center; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border); }
 .research-heading > div { flex: 1; }
 .research-panel small { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; }
@@ -2896,8 +2902,3 @@ button svg {
 .research-answer pre { white-space: pre-wrap; }
 .research-error { font-size: 12px; color: #a53636; white-space: pre-wrap; }
 .research-notice { font-size: 12px; color: #277063; }
-.with-research .document-panels.with-preview { flex-direction: column; }
-.with-research .document-panels.with-preview > section { flex: 1; min-height: 180px; }
-@media (max-width: 1050px) {
-  .with-research .research-panel { position: absolute; z-index: 3; top: 0; right: 0; bottom: 0; width: min(90%, 400px); box-shadow: -8px 0 24px #46382714; }
-}
