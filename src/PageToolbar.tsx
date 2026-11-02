@@ -1,9 +1,10 @@
+import type { ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 
 /** Shared page navigation and fit-width zoom for PDF and reMarkable previews. */
-export function PageToolbar({ page, count, zoom, onPage, onZoom }: {
+export function PageToolbar({ page, count, zoom, onPage, onZoom, children }: {
   page: number; count: number | null; zoom: number;
-  onPage: (page: number) => void; onZoom: (zoom: number) => void;
+  onPage: (page: number) => void; onZoom: (zoom: number) => void; children?: ReactNode;
 }) {
   return <div className="pdf-toolbar">
     <button aria-label="Previous page" disabled={!count || page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft size={16} /></button>
@@ -13,5 +14,6 @@ export function PageToolbar({ page, count, zoom, onPage, onZoom }: {
     <button aria-label="Zoom out" disabled={zoom <= 0.5} onClick={() => onZoom(Math.max(0.5, zoom - 0.25))}><Minus size={16} /></button>
     <span>{Math.round(zoom * 100)}%</span>
     <button aria-label="Zoom in" disabled={zoom >= 3} onClick={() => onZoom(Math.min(3, zoom + 0.25))}><Plus size={16} /></button>
+    {children}
   </div>;
 }

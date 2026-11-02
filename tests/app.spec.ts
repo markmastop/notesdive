@@ -412,15 +412,18 @@ test("Home keeps folder shortcuts in Settings without deleting notes", async ({ 
   expect(await page.evaluate(() => Object.keys((window as any).__test.files).length)).toBe(3);
 });
 
-function samplePdf() {
+function samplePdf(pageCount = 1) {
   const stream = "BT /F1 22 Tf 72 700 Td (NotesDive PDF) Tj ET\n";
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Pages /Kids [${Array.from({ length: pageCount }, (_, index) => `${index === 0 ? 3 : index + 5} 0 R`).join(" ")}] /Count ${pageCount} >>`,
     "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
     "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     `<< /Length ${stream.length} >>\nstream\n${stream}endstream`,
   ];
+  for (let index = 1; index < pageCount; index++) {
+    objects.push("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 800 600] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>");
+  }
   let pdf = "%PDF-1.4\n";
   const offsets = [0];
   objects.forEach((object, index) => {
@@ -433,6 +436,72 @@ function samplePdf() {
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF\n`;
   return pdf;
 }
+
+test("PPTX and PDF present fullscreen and restore the current page", async ({ page }, testInfo) => {
+  const deck = createPresentation();
+  for (const title of ["First", "Second", "Third"]) {
+    addSlideTextBox(addBlankSlide(deck), { x: inches(1), y: inches(1), w: inches(8), h: inches(1), text: title });
+  }
+  await page.goto("/");
+  await page.evaluate(({ pptx, pdf }) => {
+    const app = (window as any).__test;
+    app.external("Present.pptx", atob(pptx));
+    app.external("Present.pdf", pdf);
+  }, { pptx: Buffer.from(await savePresentation(deck)).toString("base64"), pdf: samplePdf(2) });
+  await page.getByRole("button", { name: "All files", exact: true }).click();
+  await page.getByRole("button", { name: "Present.pptx", exact: true }).click();
+  const start = page.getByRole("button", { name: "Start presentation", exact: true });
+  await expect(start).toBeEnabled();
+  await page.getByRole("button", { name: "Next slide", exact: true }).click();
+  await page.getByRole("button", { name: "Show slide grid" }).click();
+  await start.click();
+  const presentation = page.getByRole("dialog", { name: "Presentation", exact: true });
+  await expect(presentation.getByRole("img", { name: "Slide 2", exact: true })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(presentation.getByRole("img", { name: "Slide 3", exact: true })).toBeVisible();
+  await expect(presentation.getByRole("button", { name: "Next slide" })).toBeDisabled();
+  await page.keyboard.press("Home");
+  await expect(presentation.getByRole("button", { name: "Previous slide" })).toBeDisabled();
+  await page.keyboard.press("PageDown");
+  await page.screenshot({ path: `test-results/pptx-fullscreen-${testInfo.project.name}.png` });
+  await page.keyboard.press("Escape");
+  await expect(presentation).toHaveCount(0);
+  await expect(page.getByText("Slide 2 of 3")).toBeVisible();
+  await expect(start).toBeFocused();
+  await expect.poll(() => page.evaluate(() => (window as any).__test.fullscreen.calls)).toEqual([true, false]);
+
+  await page.getByRole("button", { name: "Present.pdf", exact: true }).click();
+  await expect(start).toBeEnabled();
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await start.click();
+  const canvas = presentation.getByLabel("PDF page 1", { exact: true });
+  await expect(canvas).toBeVisible();
+  await expect.poll(() => canvas.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return box.height > 0 && box.x >= -1 && box.y >= -1 && box.right <= innerWidth + 1 && box.bottom <= innerHeight + 1;
+  })).toBe(true);
+  await page.setViewportSize({ width: 900, height: 600 });
+  await expect.poll(() => canvas.evaluate((element) => Math.round(element.getBoundingClientRect().height))).toBe(600);
+  await page.keyboard.press("PageDown");
+  const secondPage = presentation.getByLabel("PDF page 2", { exact: true });
+  await expect(secondPage).toBeVisible();
+  await expect.poll(() => secondPage.evaluate((element) => Math.round(element.getBoundingClientRect().width))).toBe(800);
+  await expect(presentation.getByRole("button", { name: "Next slide" })).toBeDisabled();
+  await page.screenshot({ path: `test-results/pdf-fullscreen-${testInfo.project.name}.png` });
+  await page.keyboard.press("Shift+Tab");
+  await expect(presentation.getByRole("button", { name: "Exit presentation" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(presentation).toHaveCount(0);
+  await expect(start).toBeFocused();
+  await expect(page.getByText("Page 2 of 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("125%", { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as any).__test.fullscreen.calls)).toEqual([true, false, true, false]);
+  await page.evaluate(() => { (window as any).__test.fullscreen.fail = true; });
+  await start.click();
+  await expect(page.getByRole("alert")).toContainText("Could not start fullscreen presentation");
+  await expect(presentation).toHaveCount(0);
+  expect(await page.locator("#root").evaluate((element) => (element as HTMLElement).inert)).toBe(false);
+});
 
 test("views a local PDF, SVG and PNG without adding them to Todos", async ({ page }) => {
   await page.goto("/");

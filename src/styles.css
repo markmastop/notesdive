@@ -2905,3 +2905,7 @@ button svg {
 
 .research-request-status { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .research-turn { scroll-margin-top: 12px; }
+
+.asset-presentation-stage { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.asset-presentation-stage img { width: 100%; height: 100%; object-fit: contain; }
+.asset-presentation-stage canvas { display: block; background: white; }

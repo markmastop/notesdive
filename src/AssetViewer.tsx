@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Grid2X2, Presentation } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Grid2X2, PanelTop, Presentation } from "lucide-react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { Asset } from "./api";
@@ -8,6 +8,24 @@ import { isolatedPage } from "./isolatedPage";
 import { PageToolbar } from "./PageToolbar";
 import { invoke } from "@tauri-apps/api/core";
 import { htmlLink } from "./htmlLinks";
+import { Slideshow, type PresentationSession } from "./Slideshow";
+import { enterPresentationFullscreen } from "./presentationFullscreen";
+
+function useAssetPresentation() {
+  const [error, onError] = useState("");
+  const [session, setSession] = useState<PresentationSession | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setSession(null), []);
+  const restoreFocus = useCallback(() => button.current?.focus(), []);
+  const start = () => {
+    onError("");
+    setSession(enterPresentationFullscreen().catch(() => {
+      onError("Could not start fullscreen presentation. Please try again.");
+      return null;
+    }));
+  };
+  return { session, button, close, restoreFocus, start, error, onError };
+}
 
 function assetBytes(data: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
@@ -62,6 +80,7 @@ function PptxViewer({ data }: { data: string }) {
   const [index, setIndex] = useState(0);
   const [grid, setGrid] = useState(false);
   const [error, setError] = useState("");
+  const presentation = useAssetPresentation();
   useEffect(() => {
     let alive = true;
     setSlides([]);
@@ -77,7 +96,7 @@ function PptxViewer({ data }: { data: string }) {
     return () => { alive = false; };
   }, [data]);
   useEffect(() => {
-    if (grid) return;
+    if (grid || presentation.session || !slides.length) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest("input, textarea, [contenteditable=true]")) return;
       if (event.key === "ArrowLeft" || event.key === "PageUp") setIndex((current) => Math.max(0, current - 1));
@@ -85,7 +104,7 @@ function PptxViewer({ data }: { data: string }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [grid, slides.length]);
+  }, [grid, slides.length, presentation.session]);
   return <div className="office-slides" aria-label="PowerPoint viewer">
     <div className="pdf-toolbar">
       <button aria-label="Previous slide" disabled={grid || index === 0} onClick={() => setIndex(index - 1)}><ChevronLeft size={16} /></button>
@@ -93,11 +112,14 @@ function PptxViewer({ data }: { data: string }) {
       <button aria-label="Next slide" disabled={grid || index >= slides.length - 1} onClick={() => setIndex(index + 1)}><ChevronRight size={16} /></button>
       <span className="pdf-toolbar-spacer" />
       <button aria-label="Show slide grid" aria-pressed={grid} onClick={() => setGrid(true)}><Grid2X2 size={16} /></button>
-      <button aria-label="Show single slide" aria-pressed={!grid} onClick={() => setGrid(false)}><Presentation size={16} /></button>
+      <button aria-label="Show single slide" aria-pressed={!grid} onClick={() => setGrid(false)}><PanelTop size={16} /></button>
+      <button ref={presentation.button} aria-label="Start presentation" title="Present fullscreen" disabled={!slides.length || !!presentation.session} onClick={() => { setGrid(false); presentation.start(); }}><Presentation size={16} /></button>
     </div>
+    {presentation.error && <p className="asset-message" role="alert">{presentation.error}</p>}
     {error ? <p className="asset-message" role="alert">{error}</p> : !slides.length ? <p className="asset-message">Loading presentation…</p> : grid ?
       <div className="office-slide-grid">{slides.map((src, number) => <button key={number} onClick={() => { setIndex(number); setGrid(false); }} aria-label={`Open slide ${number + 1}`}><img src={src} alt={`Slide ${number + 1}`} /><span>{number + 1}</span></button>)}</div> :
       <div className="office-slide-stage"><img src={slides[index]} alt={`Slide ${index + 1}`} /></div>}
+    {presentation.session && <Slideshow session={presentation.session} count={slides.length} current={index} onNavigate={setIndex} onClose={presentation.close} onError={presentation.onError} onRestoreFocus={presentation.restoreFocus}><div className="asset-presentation-stage"><img src={slides[index]} alt={`Slide ${index + 1}`} /></div></Slideshow>}
   </div>;
 }
 
@@ -105,19 +127,21 @@ function PdfViewer({ data }: { data: string }) {
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [width, setWidth] = useState(640);
+  const [size, setSize] = useState({ width: 640, height: 480 });
   const [error, setError] = useState("");
+  const presentation = useAssetPresentation();
+  const presenting = !!presentation.session;
   const scrollRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const observer = new ResizeObserver(() => setWidth(element.clientWidth));
+    const observer = new ResizeObserver(() => setSize({ width: element.clientWidth, height: element.clientHeight }));
     observer.observe(element);
-    setWidth(element.clientWidth);
+    setSize({ width: element.clientWidth, height: element.clientHeight });
     return () => observer.disconnect();
-  }, []);
+  }, [presenting]);
 
   useEffect(() => {
     let alive = true;
@@ -154,7 +178,9 @@ function PdfViewer({ data }: { data: string }) {
       if (!alive || !canvasRef.current) return;
       const canvas = canvasRef.current;
       const base = page.getViewport({ scale: 1 });
-      const scale = Math.max(0.25, (Math.max(width - 48, 280) / base.width) * zoom);
+      const scale = presenting
+        ? Math.min(size.width / base.width, size.height / base.height)
+        : Math.max(0.25, (Math.max(size.width - 48, 280) / base.width) * zoom);
       const viewport = page.getViewport({ scale });
       const pixelRatio = Math.min(
         window.devicePixelRatio || 1,
@@ -182,14 +208,20 @@ function PdfViewer({ data }: { data: string }) {
       alive = false;
       rendering?.cancel();
     };
-  }, [document, pageNumber, width, zoom]);
+  }, [document, pageNumber, size, zoom, presenting]);
 
+  const navigatePresentation = useCallback((index: number) => setPageNumber(index + 1), []);
+  const page = <div className={presenting ? "asset-presentation-stage" : "pdf-scroll"} ref={scrollRef}>
+    {presenting && error && <p className="asset-message" role="alert">{error}</p>}
+    {document ? <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} /> : <p className="asset-message">Loading PDF…</p>}
+  </div>;
   return (
     <div className="pdf-viewer" aria-label="PDF viewer">
-      <PageToolbar page={pageNumber} count={document?.numPages ?? null} zoom={zoom} onPage={setPageNumber} onZoom={setZoom} />
-      <div className="pdf-scroll" ref={scrollRef}>
-        {error ? <p className="asset-message" role="alert">{error}</p> : document ? <canvas ref={canvasRef} aria-label={`PDF page ${pageNumber}`} /> : <p className="asset-message">Loading PDF…</p>}
-      </div>
+      <PageToolbar page={pageNumber} count={document?.numPages ?? null} zoom={zoom} onPage={setPageNumber} onZoom={setZoom}>
+        <button ref={presentation.button} aria-label="Start presentation" title="Present fullscreen" disabled={!document || !!presentation.session} onClick={presentation.start}><Presentation size={16} /></button>
+      </PageToolbar>
+      {(error || presentation.error) && <p className="asset-message" role="alert">{error || presentation.error}</p>}
+      {presentation.session ? <Slideshow session={presentation.session} count={document?.numPages ?? 0} current={pageNumber - 1} onNavigate={navigatePresentation} onClose={presentation.close} onError={presentation.onError} onRestoreFocus={presentation.restoreFocus}>{page}</Slideshow> : page}
     </div>
   );
 }
