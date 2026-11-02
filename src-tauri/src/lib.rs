@@ -3,6 +3,7 @@ mod files;
 mod finder;
 mod pdf_export;
 mod browser;
+mod research;
 mod updates;
 mod projects;
 mod libraries;
@@ -174,7 +175,7 @@ pub fn run() {
         .manage(projects::ProjectState::default())
         .manage(remarkable::RemarkableState::default())
         .manage(remarkable::sync::SyncState::default())
-        .invoke_handler(tauri::generate_handler![finder::pending_finder_files, finder::open_finder_file, document_actions::document_action,remarkable::sync::remarkable_sync_snapshot, remarkable::sync::remarkable_sync_apply, remarkable::sync::remarkable_sync_cancel, remarkable::remarkable_status, remarkable::remarkable_pair, remarkable::remarkable_disconnect, remarkable::remarkable_list, remarkable::remarkable_detail, remarkable::remarkable_preview, pdf_export::save_pdf, browser::open_web_link, updates::update_platform, updates::open_release_page, libraries::list_libraries, libraries::library_themes, libraries::read_library_marp_theme, libraries::read_library_marp_image, libraries::choose_library, libraries::switch_library, libraries::forget_library, libraries::import_legacy_projects, projects::load_projects, projects::save_projects, projects::choose_project_folder, projects::list_project_notes, projects::read_project_note, restore_workspace, choose_workspace, list_workspaces, switch_workspace, forget_workspace, list_known_notes, read_known_note, list_notes, read_note, read_marp_theme, read_asset, save_clipboard_image, save_note, create_note])
+        .invoke_handler(tauri::generate_handler![research::research_connected, research::research_connect, research::research_disconnect, research::research_models, research::research_ask, finder::pending_finder_files, finder::open_finder_file, document_actions::document_action,remarkable::sync::remarkable_sync_snapshot, remarkable::sync::remarkable_sync_apply, remarkable::sync::remarkable_sync_cancel, remarkable::remarkable_status, remarkable::remarkable_pair, remarkable::remarkable_disconnect, remarkable::remarkable_list, remarkable::remarkable_detail, remarkable::remarkable_preview, pdf_export::save_pdf, browser::open_web_link, updates::update_platform, updates::open_release_page, libraries::list_libraries, libraries::library_themes, libraries::read_library_marp_theme, libraries::read_library_marp_image, libraries::choose_library, libraries::switch_library, libraries::forget_library, libraries::import_legacy_projects, projects::load_projects, projects::save_projects, projects::choose_project_folder, projects::list_project_notes, projects::read_project_note, restore_workspace, choose_workspace, list_workspaces, switch_workspace, forget_workspace, list_known_notes, read_known_note, list_notes, read_note, read_marp_theme, read_asset, save_clipboard_image, save_note, create_note])
         .build(tauri::generate_context!())
         .expect("Could not start NotesDive")
         .run(|app, event| {

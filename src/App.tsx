@@ -43,6 +43,7 @@ import { AssetViewer } from "./AssetViewer";
 import { DocumentSession } from "./session";
 import { watchFinderFiles } from "./finderFiles";
 import { Editor } from "./Editor";
+import { ResearchPanel } from "./ResearchPanel";
 import { RichEditor } from "./RichEditor";
 import { exportPdf } from "./pdfExport";
 import { renderMarkdown } from "./markdown";
@@ -273,6 +274,7 @@ export default function App() {
     });
   };
   const [sidebar, setSidebar] = useState(true);
+  const [researchOpen, setResearchOpen] = useState(false);
   const [focusDocument, setFocusDocument] = useState(false);
   const [taskBusy, setTaskBusy] = useState(false);
   const [taskError, setTaskError] = useState("");
@@ -900,6 +902,7 @@ export default function App() {
                               </span>
                             </button>
                             {documentPdfButton}
+                            {!marp && <button className="quiet-button" aria-label="Toggle research assistant" aria-expanded={researchOpen} onClick={() => { if (!researchOpen) { setTab("notes"); setFocusDocument(true); } setResearchOpen((value) => !value); }}><Search size={15} /><span>Research</span></button>}
                             {!marp && <><span className="toolbar-divider" />
                             <button
                               className={`icon-button preview-toggle ${showPreview ? "active" : ""}`}
@@ -947,6 +950,7 @@ export default function App() {
                         </button>
                       </div>
                     </div>
+                    <div className={`document-research-layout${researchOpen && !marp ? " with-research" : ""}`}><div className="document-research-editor">
                     {marp && !marpEditing ? <Suspense fallback={<p className="asset-message" role="status">Loading presentation…</p>}><MarpViewer index={marpIndex} onNavigate={setMarpIndex} editing={marpSlideEditing} onEdit={() => setMarpSlideEditing(true)} disabled={state.busy} onChange={(text) => session.edit(text)} text={state.text} folder={state.folder!.path} notePath={state.note.path} library={projects.library ?? null} /></Suspense> : <div
                       className={`document-panels ${showPreview ? "with-preview" : ""}`}
                     >
@@ -987,6 +991,15 @@ export default function App() {
                         </section>
                       )}
                     </div>}
+                    </div>
+                    {!marp && researchOpen && <ResearchPanel key={JSON.stringify([state.folder?.path, state.note.path])}
+                      noteName={state.note.path} noteText={state.text} disabled={state.busy || state.conflict || !!state.error}
+                      close={() => setResearchOpen(false)} append={(markdown) => {
+                        const current = session.getSnapshot();
+                        if (current.busy || current.conflict || current.error || current.folder?.path !== state.folder?.path || current.note?.path !== state.note?.path) return;
+                        session.edit(`${current.text}${current.text.endsWith("\n\n") ? "" : current.text.endsWith("\n") ? "\n" : "\n\n"}${markdown}`);
+                      }} />}
+                    </div>
                     <footer className="document-footer">
                       <span>
                         {wordCount.toLocaleString()} words

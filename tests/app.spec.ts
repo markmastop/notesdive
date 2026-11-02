@@ -66,6 +66,7 @@ test.beforeEach(async ({ page }) => {
         { id: "inbox", parent: "", name: "Quick sheets", isFolder: false, modified: null, pinned: false },
       ],
     };
+    const research = { connected: false, requests: [] as any[], fail: false, paused: false, finish: null as null | (() => void) };
     let id = 0;
     const callbacks: Record<number, (event: unknown) => void> = {};
     const events: Record<string, number[]> = {};
@@ -137,6 +138,16 @@ test.beforeEach(async ({ page }) => {
               if (args.page === null) return { mime: remarkable.fileType === "epub" ? "application/epub+zip" : "application/pdf", data: remarkable.pdfData };
               return { mime: "application/x-remarkable", data: remarkable.pageData[Number(args.page)] };
             }
+          }
+          if (command === "research_connected") return research.connected;
+          if (command === "research_connect") { research.connected = true; return; }
+          if (command === "research_disconnect") { research.connected = false; return; }
+          if (command === "research_models") return [{ id: "test/research:free", name: "Research Free" }];
+          if (command === "research_ask") {
+            research.requests.push(args);
+            if (research.paused) await new Promise<void>((resolve) => { research.finish = resolve; });
+            if (research.fail) throw "The free model's request limit was reached.";
+            return { content: "A useful **research answer** with [a source](https://example.com/evidence).", model: "test/research:free" };
           }
           if (command === "save_pdf") { (window as any).__test.exportedPdf = args; return `/test/${args.filename}`; }
           if (command === "update_platform") return "darwin-aarch64";
@@ -327,6 +338,7 @@ test.beforeEach(async ({ page }) => {
       },
       __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => {} },
       __test: {
+        research,
         directories,
         scans,
         fullscreen,
@@ -4071,4 +4083,84 @@ test("workspace panels align in height and all screens fit desktop and compact w
     await nav.getByRole("button", { name: "Project tasks", exact: true }).click(); await fits();
     await page.screenshot({ path: `test-results/layout-project-tasks-page-${size.width}-${testInfo.project.name}.png` });
   }
+});
+
+
+test("research reviews free-model answers and appends sources with autosave", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "All files", exact: true }).click();
+  await page.getByRole("button", { name: "Welcome", exact: true }).click();
+  await page.getByRole("button", { name: "Toggle research assistant" }).click();
+  const panel = page.getByRole("complementary", { name: "Research assistant" });
+  await panel.getByLabel("OpenRouter API key").fill("test-key-not-a-real-secret");
+  await panel.getByRole("button", { name: "Connect", exact: true }).click();
+  await panel.getByRole("button", { name: "OpenRouter settings" }).click();
+  await expect(panel.getByLabel("OpenRouter API key")).toHaveValue("");
+  await panel.getByRole("button", { name: "OpenRouter settings" }).click();
+  await panel.getByText("Supply source links and excerpts", { exact: false }).click();
+  await panel.getByLabel("Source title", { exact: true }).fill("Evidence page");
+  await panel.getByLabel("Source URL", { exact: true }).fill("https://example.com/evidence");
+  await panel.getByLabel("Source excerpt", { exact: true }).fill("An excerpt supplied by the user.");
+  await panel.getByRole("button", { name: "Add source", exact: true }).click();
+  await panel.getByLabel("Research question").fill("Explain the evidence");
+  await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
+  await expect(panel.getByText("A useful", { exact: false }).first()).toBeVisible();
+  const request = await page.evaluate(() => (window as any).__test.research.requests[0]);
+  expect(request.model).toBe("test/research:free");
+  expect(request.messages[0].content).toContain("An excerpt supplied by the user.");
+  expect(request.messages[0].content).not.toContain("A little room to think");
+  await panel.getByRole("link", { name: "a source", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__test.openedWebLink)).toBe("https://example.com/evidence");
+  await panel.getByText("Edit text to insert", { exact: true }).click();
+  await panel.getByLabel("Edit research answer 1").fill("Reviewed research answer.");
+  await panel.getByRole("button", { name: "Append answer + sources to note" }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).__test.files["Welcome.md"])).toContain("Reviewed research answer.");
+  await expect.poll(() => page.evaluate(() => (window as any).__test.files["Welcome.md"])).toContain("[Evidence page](<https://example.com/evidence>)");
+  await panel.getByLabel("Include this note as context").check();
+  await panel.getByLabel("Research question").fill("Give a shorter explanation");
+  await panel.getByRole("button", { name: "Ask follow-up" }).click();
+  await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toHaveCount(2);
+  const followup = await page.evaluate(() => (window as any).__test.research.requests[1]);
+  expect(followup.messages.length).toBe(3);
+  expect(followup.messages[1].content).toContain("A useful **research answer**");
+  expect(followup.messages[2].content).toContain("User-supplied note context");
+  expect(followup.messages[2].content).toContain("Reviewed research answer.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.screenshot({ path: "test-results/research-desktop.png" });
+  await panel.getByRole("button", { name: "New conversation", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toHaveCount(0);
+  await page.setViewportSize({ width: 760, height: 520 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const panelBox = await panel.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(520);
+  expect(panelBox!.y).toBeLessThan(400);
+  await page.screenshot({ path: "test-results/research-compact.png" });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await panel.getByRole("button", { name: "Close research" }).click();
+  await page.getByRole("button", { name: "Back to notes", exact: true }).click();
+  await page.getByRole("button", { name: "Welcome", exact: true }).click();
+  await page.getByRole("button", { name: "Markdown", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Markdown editor" })).toContainText("AI draft · OpenRouter");
+});
+
+test("research errors preserve the question and late answers cannot cross documents", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => { (window as any).__test.research.connected = true; (window as any).__test.research.fail = true; });
+  await page.getByRole("button", { name: "All files", exact: true }).click();
+  await page.getByRole("button", { name: "Welcome", exact: true }).click();
+  await page.getByRole("button", { name: "Toggle research assistant" }).click();
+  const panel = page.getByRole("complementary", { name: "Research assistant" });
+  await panel.getByLabel("Research question").fill("Keep my question");
+  await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("request limit");
+  await expect(panel.getByLabel("Research question")).toHaveValue("Keep my question");
+  await page.evaluate(() => { (window as any).__test.research.fail = false; (window as any).__test.research.paused = true; });
+  await panel.getByRole("button", { name: "Ask OpenRouter", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => !!(window as any).__test.research.finish)).toBe(true);
+  await page.getByRole("button", { name: "Back to notes", exact: true }).click();
+  await page.getByRole("button", { name: "A quieter workspace", exact: true }).click();
+  await page.evaluate(() => (window as any).__test.research.finish());
+  await expect(panel.getByRole("button", { name: "Append answer + sources to note" })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).__test.files["Ideas/A quieter workspace.md"])).not.toContain("research answer");
 });

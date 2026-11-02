@@ -33,6 +33,7 @@ Use `npm run tauri dev` for the desktop app; `npm run dev` starts only the brows
 ## Documentation
 
 - [User guide](docs/user-guide.md) — editing, libraries, projects, presentations and exports.
+- [Research assistant (unreleased)](docs/research-assistant.md) — free OpenRouter models and adding answers with source links.
 - [Development guide](docs/development.md) — setup, builds, tests and project structure.
 - [reMarkable folder sync](docs/remarkable-folder-sync.md) — supported transfers and limitations.
 - [Markdown task syntax](docs/supported-tags.md) — checkboxes, dates, priorities and tags.
